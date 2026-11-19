@@ -2,7 +2,7 @@
 
 Last updated: 2026-11-19
 
-Reviewed source baseline: `627fa1d21698caf17de9c8fa320908ecda67f75c`.
+Reviewed source baseline: `3b8f537ea774e38726e0d92b511e125fec0409c6`.
 This document distinguishes repository/CI evidence from Android-device and production evidence. A green CI run is not proof of a working VPN connection.
 
 ## Current delivery decision
@@ -24,13 +24,15 @@ This document distinguishes repository/CI evidence from Android-device and produ
 | Controller/lifecycle unit tests | CI Tested | CI run #43 passed unit tests on commit `627fa1d21698caf17de9c8fa320908ecda67f75c` |
 | Android lint | CI Tested | CI run #43 passed Android lint |
 | Release-variant assembly | CI Built | CI run #43 passed release-variant assembly; CI-only output, not signed owner release or distribution |
-| Latest CI run | CI Tested | Run #43, ID `44472058510`, commit `627fa1d21698caf17de9c8fa320908ecda67f75c`; all job steps successful |
+| Latest CI run | Blocked (in progress) | Run #44, ID `44473125681`, commit `3b8f537ea774e38726e0d92b511e125fec0409c6`; unit tests and Android lint passed, release assembly was still running at last inspection |
 | Physical Android validation | Not Implemented | No device test evidence |
 | Self-hosted backend/server | Server Deployment Required | No VPS/server has been provisioned |
 | Stable signed APK | Blocked | Permanent signing identity not confirmed by owner |
 | Production verification | Blocked | Requires device, real endpoint, and complete release gates |
 
-CI run #43: https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44472058510
+CI run #43 (completed successfully on parent commit): https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44472058510
+
+Latest CI run #44 (in progress at last inspection): https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44473125681
 
 ## Six-engine implementation matrix
 
@@ -88,3 +90,11 @@ Until every applicable gate is evidenced, keep Stable Production blocked. GitHub
 6. Complete signing and release gates, then publish only Stable Production.
 
 No infrastructure, paid service, domain, VPS, private key, or signing identity is created by this repository update.
+
+## Current blockers that cannot be truthfully cleared in repository-only work
+
+- Physical-device validation is blocked until an Android device is available for hands-on testing.
+- Data-plane validation is blocked until an authorized WireGuard profile and reachable endpoint are supplied and deployed.
+- Stable signing is blocked until the owner supplies/approves the permanent signing identity and its secure backup.
+- The self-hosted backend source, five remaining engine integrations, and unimplemented complementary cores are product implementation work; they are not completed by CI or documentation changes.
+- No external infrastructure, credentials, endpoints, or signing material may be fabricated or provisioned without owner authorization.
