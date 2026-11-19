@@ -12,7 +12,7 @@ This audit checks repository evidence against `docs/MASTER_SPEC.md` and the immu
 | Rule | Evidence | Result |
 |---|---|---|
 | Exactly six approved engine slots | `ArchitectureInventory.kt`; exact-set unit test added in this change | CI Tested in CI #46 on commit `60d3bfb9548767713dcc4009232d98b21c6f61da` |
-| Exactly eight approved complementary cores | `ArchitectureInventory.kt`; exact-set unit test added in this change | CI validation pending for this change |
+| Exactly eight approved complementary cores | `ArchitectureInventory.kt`; exact-set unit test added in this change | CI Tested in CI #46 on commit `60d3bfb9548767713dcc4009232d98b21c6f61da` |
 | One TUN owner | WireGuard upstream `GoBackend.VpnService`; no app-declared second VPN service | Source reviewed; runtime merge/device validation pending |
 | Single app-level engine lifecycle entry point | `VpnSessionController` | Source Implemented; unit tests passed in CI #46 |
 | WireGuard first | Only WireGuard adapter registered in `MolidoVpnApplication` | Source Implemented; device/server validation blocked |
