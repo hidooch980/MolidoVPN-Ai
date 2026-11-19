@@ -3,18 +3,31 @@
 Last updated: 2026-11-19
 
 ## Repository baseline
+
 | Item | Status | Evidence |
 |---|---|---|
-| Empty product repository initialized | Source Implemented | Initial repository bootstrap commit |
-| Dedicated from-scratch branch created | Source Implemented | `development/molido-vpn-ai-from-scratch` |
-| Master specification | Source Implemented | `docs/MASTER_SPEC.md` |
-| Architecture and TUN ownership contract | Source Implemented | `docs/ARCHITECTURE.md` |
-| Physical Android VPN connection | Not Implemented | No device test evidence in this repository |
-| Self-hosted backend deployment | Server Deployment Required | No server is provisioned |
-| Stable signed APK | Blocked | Permanent signing identity has not been established in this repository |
+| Dedicated from-scratch branch | Source Implemented | `development/molido-vpn-ai-from-scratch` |
+| Master specification and architecture docs | Source Implemented | `docs/MASTER_SPEC.md`, `docs/ARCHITECTURE.md` |
+| Android Gradle application scaffold | Source Implemented | `android/app`, Gradle Kotlin DSL |
+| Fixed six-engine/eight-core inventory | Source Implemented | `ArchitectureInventory.kt` |
+| Single-owner session arbitration contract | Source Implemented | `SessionSupervisor.kt` |
+| Unit tests for inventory and exclusive ownership | Source Implemented | Android local unit tests authored |
+| GitHub Actions Android CI workflow | Source Implemented | `.github/workflows/android-ci.yml` |
+| CI execution result | Blocked | No workflow run is currently visible for this branch |
+| WireGuard packet data plane | Not Implemented | No packet transport or real tunnel established |
+| Android TUN ownership integration | Not Implemented | Service scaffold deliberately does not establish TUN |
+| Other five engine data planes | Not Implemented | Slots only; no adapter claimed as ready |
+| Self-hosted backend/server | Server Deployment Required | No server is provisioned |
+| Stable signed APK | Blocked | Permanent signing identity and release evidence absent |
+| Physical Android device verification | Not Implemented | No device test evidence |
 | Production verification | Blocked | Requires real device and deployed server evidence |
 
+## Latest branch revision
+
+`d08b6f8d652c364a991a80cfc97f351ac6ccd925`
+
 ## Release gates
+
 A Stable Production release is blocked until all are true:
 1. Permanent signing identity is confirmed and securely backed up by the owner.
 2. Release workflow builds only the production variant and never distributes debug/test variants.
@@ -24,4 +37,5 @@ A Stable Production release is blocked until all are true:
 6. Release notes, SBOM/dependency inventory, checksums, and rollback guidance are prepared.
 
 ## Reporting rule
+
 A CI green check means only that the named automated checks passed for the named commit. It does not imply Android Device Tested, Server Deployment Required completion, or Production Verified.
