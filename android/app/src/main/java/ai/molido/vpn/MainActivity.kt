@@ -10,6 +10,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import ai.molido.vpn.core.SessionStatusText
 import ai.molido.vpn.core.SessionState
 import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
@@ -154,18 +155,17 @@ class MainActivity : ComponentActivity() {
                     .vpnSessions.connect(ai.molido.vpn.core.EngineSlot.WIREGUARD, configuration)
                 runOnUiThread {
                     setControlsEnabled(true)
-                    if (started) {
-                        statusView.text = "WireGuard backend is active. Peer handshake, internet reachability, DNS and leak protection still require real-device verification."
+                    val detail = if (started) {
+                        "WireGuard backend is active. Peer handshake, internet reachability, DNS and leak protection still require real-device verification."
                     } else {
-                        statusView.text = "The session could not be started. The exclusive session controller rejected the request."
+                        "The session could not be started. The exclusive session controller rejected the request."
                     }
-                    renderState()
+                    renderState(detail)
                 }
             } catch (_: Throwable) {
                 runOnUiThread {
                     setControlsEnabled(true)
-                    statusView.text = "WireGuard startup failed. If cleanup is pending, the session remains reserved until disconnect succeeds."
-                    renderState()
+                    renderState("WireGuard startup failed. If cleanup is pending, the session remains reserved until disconnect succeeds.")
                 }
             }
         }
@@ -179,33 +179,25 @@ class MainActivity : ComponentActivity() {
                 val stopped = (application as MolidoVpnApplication).vpnSessions.disconnect()
                 runOnUiThread {
                     setControlsEnabled(true)
-                    statusView.text = if (stopped) {
+                    val detail = if (stopped) {
                         "VPN session stopped."
                     } else {
                         "Session cleanup is not complete. Ownership remains reserved."
                     }
-                    renderState()
+                    renderState(detail)
                 }
-            } catch (_: Exception) {
+            } catch (_: Throwable) {
                 runOnUiThread {
                     setControlsEnabled(true)
-                    statusView.text = "Disconnect failed. Session ownership is retained to prevent a second TUN from starting."
-                    renderState()
+                    renderState("Disconnect failed. Session ownership is retained to prevent a second TUN from starting.")
                 }
             }
         }
     }
 
-    private fun renderState() {
+    private fun renderState(detail: String? = null) {
         val snapshot = (application as MolidoVpnApplication).vpnSessions.snapshot()
-        val stateLabel = when (snapshot.state) {
-            SessionState.IDLE -> "Idle — no VPN session"
-            SessionState.RESERVED -> "Reserved — startup in progress"
-            SessionState.RUNNING -> "Backend active — peer handshake not verified"
-            SessionState.STOPPING -> "Stopping — cleanup in progress"
-            SessionState.FAILED -> "Failed — cleanup may be pending"
-        }
-        statusView.text = stateLabel
+        statusView.text = SessionStatusText.render(snapshot, detail)
         disconnectButton.visibility =
             if (snapshot.state == SessionState.IDLE) View.GONE else View.VISIBLE
     }
