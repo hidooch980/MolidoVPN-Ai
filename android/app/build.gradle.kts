@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "ai.molido.vpn"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "ai.molido.vpn"
