@@ -20,13 +20,13 @@ This audit distinguishes source implementation, CI evidence, physical-device tes
 | Core | Status | Evidence / boundary |
 |---|---|---|
 | Session & TUN Supervisor | Source Implemented | Exclusive controller and cleanup retry tests |
-| Network Intelligence | Source Implemented | Passive default-network observation, timestamped assessment, stale/lost-network rejection |
+| Network Intelligence | Source Implemented | Passive default-network observation, timestamped assessment, stale/lost-network rejection; simulated controller tests cover offline/stale/validated transitions, physical Android callback behavior pending |
 | Adaptive Path & Policy | Partially Source Implemented | Controller blocks start unless current measured network meets policy |
 | Security & Privacy | Partially Source Implemented | Redaction, HTTPS-only bounded client, Android Keystore encrypted trust material; full security validation pending |
-| Resilience & Recovery | Partially Source Implemented | Bounded backoff; only FAILED state can retry; pending cleanup prevents replacement; no scheduler |
+| Resilience & Recovery | Partially Source Implemented | Bounded backoff, explicit active-engine failure transition and safe cleanup preparation; failed cleanup retains TUN ownership and blocks replacement. No scheduler, concrete adapter failure callback or process-death recovery |
 | Diagnostics & Observability | Partially Source Implemented | Disabled-by-default bounded local ring buffer |
 | Control Plane & Configuration | Partially Source Implemented | Self-hosted FastAPI source, ECDSA config signatures, Android HTTPS client; server not deployed |
-| Update & Integrity | Partially Source Implemented | Signed manifest/digest verification, encrypted rollback floor, PackageInstaller session staging, package identity/version checks, internal status callback and PackageManager-confirmed success counter; download transport and device-level rollback validation pending |
+| Update & Integrity | Partially Source Implemented | Signed manifest/digest verification, encrypted rollback floor, PackageInstaller session staging, package identity/version checks, internal status callback, concurrent/duplicate/downgrade admission policy and PackageManager-confirmed success counter; download transport and device-level rollback validation pending |
 
 ## Engine status
 
@@ -42,6 +42,10 @@ This audit distinguishes source implementation, CI evidence, physical-device tes
 Do not add a seventh engine. Each remaining engine needs license, dependency, security and one-TUN compatibility review.
 
 ## Corrective audit changes
+
+- Added `UpdateInstallAdmissionPolicy`, wired into `AndroidUpdateInstaller` before PackageInstaller session creation. JVM tests cover an existing pending session, equal/older version, invalid zero version and a strictly newer version.
+- Added `VpnSessionController.reportActiveEngineFailure()` and `prepareRecovery()`. The retry plan is calculated from the failed state; previous session cleanup must succeed before ownership is released. A failed cleanup preserves the owner and prevents another engine from starting.
+- Added simulated controller tests for cleanup-before-retry, retained ownership after cleanup failure, waiting for validated connectivity, and rejecting unvalidated/stale network observations. This does not prove Android ConnectivityManager callbacks or real network handover.
 
 - Backoff test corrected to test the configured retry ceiling without weakening production retry limits.
 - Recovery planner now refuses retries for IDLE, RESERVED, RUNNING and STOPPING states.
@@ -62,7 +66,8 @@ Do not add a seventh engine. Each remaining engine needs license, dependency, se
 
 ## Latest CI evidence
 
-- [Android CI #106](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44563299701), source commit `aef9eb3874dc350144be5aab9d4c20cd129a679b`: completed successfully. Backend tests, Android unit tests (including PackageInstaller completion policy), Android lint and release-variant assembly all passed.
+- [Android CI #106](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44563299701), source commit `aef9eb3874dc350144be5aab9d4c20cd129a679b`: completed successfully for the previous source.
+- [Android CI #108](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44565006192), source commit `81cfd105515fef55c070f9419c657b17ff1b9e0a`: validation is in progress; this commit must not be labelled CI Tested until Android unit tests, lint, release assembly and backend tests all complete successfully.
 - The backend audit also made signed configuration revision allocation transactional with SQLite `BEGIN IMMEDIATE` and added a regression test proving each successive publish receives a strictly increasing revision.
 - CI success is source/build evidence only. It is not Android Device Tested, Server Deployment Verified, or Production Verified.
 
@@ -73,7 +78,7 @@ Do not add a seventh engine. Each remaining engine needs license, dependency, se
 - Owner-approved permanent signing identity.
 - Production update download transport, physical PackageInstaller confirmation/install test, interrupted-install recovery and rollback verification.
 - Five unimplemented engines.
-- Automatic reconnect/process-death recovery.
+- Automatic retry scheduling, concrete adapter failure callback wiring and process-death recovery.
 - Full threat-model validation, dependency vulnerability scanning and penetration testing.
 - Stable Production release gates.
 
