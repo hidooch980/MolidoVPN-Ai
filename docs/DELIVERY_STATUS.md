@@ -42,14 +42,14 @@ No seventh engine is allowed. The five remaining engines require individual upst
 - Network observation remains active while the app process is alive, including when the Activity is backgrounded.
 - Loss of the observed default network clears the observation instead of retaining stale network facts.
 - Backend readiness enforces the same 32-character admin-token minimum as protected admin operations.
-- SQLite database files are restricted to POSIX owner-only permissions; deployment must also protect the data directory, sidecars and backups.
+- SQLite database files are restricted to POSIX owner-only permissions; the service now fails readiness closed unless the database parent directory is owned by the service account and mode 0700, rejects unsafe final-component symlinks where O_NOFOLLOW is available, and verifies the database is a regular service-owned file. WAL/SHM sidecars inherit the private directory boundary.
 - Added repository ignores for local secrets, databases, keystores and build outputs.
 
 ## CI evidence
 
 GitHub Actions is the live source of truth for the latest commit and workflow results: https://github.com/hidooch980/MolidoVPN-Ai/actions
 
-A run counts only when it is completed and its relevant jobs/steps succeeded on the exact commit being assessed. Cancelled or in-progress runs are not successful evidence. CI success proves only the checks actually executed; it does not prove VPN handshake, packet routing, DNS, leak prevention or production readiness.
+Latest verified run at this documentation checkpoint: [Android CI #89](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44554011937), commit `fa6bfc50eb8cfd842cb0e3588a67ee885753ea9a`, completed successfully. Backend tests, Android unit tests, Android lint and release-variant assembly passed. A subsequent filesystem-hardening change is awaiting its own CI run. A run counts only when it is completed and its relevant jobs/steps succeeded on the exact commit being assessed. Cancelled or in-progress runs are not successful evidence. CI success proves only the checks actually executed; it does not prove VPN handshake, packet routing, DNS, leak prevention or production readiness.
 
 ## Real-world validation still required
 
@@ -70,7 +70,7 @@ A run counts only when it is completed and its relevant jobs/steps succeeded on 
 - Diagnostics are disabled by default, process-local and not uploaded.
 - Five engines are not implemented.
 - No permanent signing key was generated or changed.
-- Dependency vulnerability scanning, full penetration testing and physical-device testing are not yet evidenced.
+- Dependency vulnerability scanning, full penetration testing and physical-device testing are not yet evidenced. The latest database directory/symlink hardening is source-level only until its CI run completes.
 
 ## Stable Production release gates
 
