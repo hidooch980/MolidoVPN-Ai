@@ -33,6 +33,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var disconnectButton: Button
     private lateinit var recoveryButton: Button
     private lateinit var policyView: TextView
+    private val policyButtons = mutableMapOf<NetworkPolicy, Button>()
     private var profileText: String? = null
     private var connectAfterConsent = false
     private val molidoApp get() = application as MolidoVpnApplication
@@ -212,16 +213,33 @@ class MainActivity : ComponentActivity() {
     private fun smallPolicy(text: String, policy: NetworkPolicy): Button =
         glassButton(text, molidoAppPolicy() == policy).apply {
             textSize = 11f
+            policyButtons[policy] = this
             setOnClickListener {
-                molidoApp.setNetworkPolicy(policy)
-                policyView.text = "سیاست شبکه: " + when (policy) {
-                    NetworkPolicy.ANY_VALIDATED -> "هر شبکه معتبر"
-                    NetworkPolicy.UNMETERED_ONLY -> "فقط شبکه بدون هزینه"
-                    NetworkPolicy.WIFI_ONLY -> "فقط Wi‑Fi"
+                if (molidoApp.setNetworkPolicy(policy)) {
+                    renderState()
+                } else {
+                    Toast.makeText(this@MainActivity, "ذخیره سیاست شبکه ناموفق بود؛ تنظیم قبلی حفظ شد.", Toast.LENGTH_SHORT).show()
+                    renderState()
                 }
-                renderState()
             }
         }
+
+    private fun refreshPolicyButtonStyles(selected: NetworkPolicy) {
+        policyButtons.forEach { (policy, button) ->
+            val active = policy == selected
+            button.background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                if (active) intArrayOf(Color.rgb(86, 230, 208), Color.rgb(27, 169, 177), Color.rgb(20, 112, 129))
+                else intArrayOf(Color.rgb(28, 75, 88), Color.rgb(12, 43, 57))
+            ).apply {
+                cornerRadius = dp(18).toFloat()
+                setStroke(dp(1), if (active) AQUA else STROKE)
+            }
+            button.setTextColor(if (active) Color.rgb(3, 31, 39) else WHITE)
+            button.isSelected = active
+            button.contentDescription = button.text.toString() + ", " + (if (active) "انتخاب‌شده" else "انتخاب‌نشده")
+        }
+    }
 
     // The application exposes the active policy through this UI-owned selection.
     private fun molidoAppPolicy() = molidoApp.currentNetworkPolicy()
@@ -308,11 +326,13 @@ class MainActivity : ComponentActivity() {
         connectButton.isEnabled = !profileText.isNullOrBlank() && snapshot.state == SessionState.IDLE &&
             network.status == NetworkAssessmentStatus.VALIDATED
         disconnectButton.isEnabled = snapshot.state != SessionState.IDLE
-        policyView.text = "سیاست شبکه: " + when (molidoApp.currentNetworkPolicy()) {
+        val activePolicy = molidoApp.currentNetworkPolicy()
+        policyView.text = "سیاست شبکه: " + when (activePolicy) {
             NetworkPolicy.ANY_VALIDATED -> "هر شبکه معتبر"
             NetworkPolicy.UNMETERED_ONLY -> "فقط شبکه بدون هزینه"
             NetworkPolicy.WIFI_ONLY -> "فقط Wi‑Fi"
         }
+        refreshPolicyButtonStyles(activePolicy)
         message?.let { statusView.text = it }
     }
 

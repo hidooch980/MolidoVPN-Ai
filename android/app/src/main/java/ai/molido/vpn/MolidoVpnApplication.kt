@@ -13,6 +13,7 @@ import ai.molido.vpn.core.NetworkAssessment
 import ai.molido.vpn.core.NetworkIntelligenceCore
 import ai.molido.vpn.core.NetworkObservation
 import ai.molido.vpn.core.NetworkPolicy
+import ai.molido.vpn.core.NetworkPolicySettingsStore
 import ai.molido.vpn.core.SessionSupervisor
 import ai.molido.vpn.core.VpnSessionController
 import ai.molido.vpn.engine.wireguard.WireGuardEngineAdapter
@@ -30,6 +31,13 @@ class MolidoVpnApplication : Application() {
 
     private val observation = AtomicReference<NetworkObservation?>(null)
     private val selectedNetworkPolicy = AtomicReference(NetworkPolicy.ANY_VALIDATED)
+    private val networkPolicySettings by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        val preferences = getSharedPreferences(NetworkPolicySettingsStore.PREFERENCES_NAME, MODE_PRIVATE)
+        NetworkPolicySettingsStore(
+            readString = { key -> preferences.getString(key, null) },
+            writeString = { key, value -> preferences.edit().putString(key, value).commit() }
+        )
+    }
     val diagnostics = DiagnosticsObservabilityCore(enabled = false)
     val trustStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { AndroidSecureTrustStore(this) }
     val controlPlaneClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { ControlPlaneClient(trustStore) }
@@ -45,8 +53,10 @@ class MolidoVpnApplication : Application() {
     fun latestNetworkAssessment(): NetworkAssessment =
         NetworkIntelligenceCore.assess(observation.get(), System.currentTimeMillis())
 
-    fun setNetworkPolicy(policy: NetworkPolicy) {
+    fun setNetworkPolicy(policy: NetworkPolicy): Boolean {
+        if (!networkPolicySettings.save(policy)) return false
         selectedNetworkPolicy.set(policy)
+        return true
     }
 
     /** Returns the currently active policy so recreated Activities render truthful settings. */
@@ -54,6 +64,7 @@ class MolidoVpnApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        selectedNetworkPolicy.set(networkPolicySettings.load())
         vpnExecutor = Executors.newSingleThreadExecutor { task ->
             Thread(task, "molido-vpn-control").apply { isDaemon = true }
         }
