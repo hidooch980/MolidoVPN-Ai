@@ -1,30 +1,19 @@
 package ai.molido.vpn.core
 
 /**
- * Packet I/O supplied by the platform VPN service after it establishes the one TUN.
- * Engine adapters consume this interface; they must never create or own Android TUNs.
- */
-interface PacketIo {
-    /** Reads one IP packet into [buffer], returning its byte count or -1 when closed. */
-    fun readPacket(buffer: ByteArray): Int
-
-    /** Writes one complete IP packet from [packet] using [length] bytes. */
-    fun writePacket(packet: ByteArray, length: Int)
-}
-
-/** Handle for an engine data plane started by an adapter. */
-interface EngineSession {
-    /** Stops engine workers and releases engine-specific resources, not the Android TUN. */
-    fun stop()
-}
-
-/**
- * Contract for one of the six approved engine slots.
- * Implementations receive platform-owned packet I/O and may not call VpnService.Builder.
+ * An adapter is an engine implementation, not a TUN owner.
+ *
+ * Only VpnSessionController may invoke start/stop. Each implementation must use the
+ * application's one designated Android VPN service and must never register or establish
+ * a second VpnService/TUN. Configuration is sensitive and must never be logged or persisted
+ * by an adapter.
  */
 interface EngineAdapter {
     val slot: EngineSlot
+    fun start(configuration: String): EngineSession
+}
 
-    /** Starts the engine data plane against the PacketIo owned by MolidoVpnService. */
-    fun start(packetIo: PacketIo): EngineSession
+/** A live engine session. stop() must be idempotent and release its engine resources. */
+interface EngineSession {
+    fun stop()
 }

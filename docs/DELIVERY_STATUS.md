@@ -10,14 +10,17 @@ Last updated: 2026-11-19
 | Master specification and architecture docs | Source Implemented | `docs/MASTER_SPEC.md`, `docs/ARCHITECTURE.md` |
 | Android Gradle application scaffold | Source Implemented | `android/app`, Gradle Kotlin DSL |
 | Fixed six-engine/eight-core inventory | Source Implemented | `ArchitectureInventory.kt` |
-| Single-owner session lifecycle coordinator | Source Implemented | `SessionSupervisor.kt`; IDLE/RESERVED/RUNNING/STOPPING/FAILED |
-| Platform-owned packet adapter contract | Source Implemented | `EngineAdapter.kt`; adapters receive PacketIo and do not own TUN |
-| Session lifecycle unit tests | Source Implemented | Seven local unit tests authored; latest revision awaits CI |
+| Session lifecycle coordinator | Source Implemented | `SessionSupervisor.kt`; IDLE/RESERVED/RUNNING/STOPPING/FAILED |
+| Central engine orchestration | Source Implemented | `VpnSessionController.kt`; single adapter invocation path |
+| WireGuard Android dependency | Source Implemented | Upstream `com.wireguard.android:tunnel:1.0.20260102`, Apache-2.0 |
+| WireGuard engine adapter | Source Implemented | `WireGuardEngineAdapter.kt`; parses in-memory wg-quick config and delegates to upstream GoBackend |
+| Single VPN service declaration | Source Implemented | Manifest merges upstream `GoBackend.VpnService`; custom placeholder VPN service removed from manifest |
+| Controller lifecycle tests | Source Implemented | Five controller tests plus supervisor/inventory tests; current revision awaits CI |
 | GitHub Actions Android CI workflow | Source Implemented | `.github/workflows/android-ci.yml` |
-| Last verified CI execution | CI Tested | Run #8 passed unit tests and Android lint on commit `0095f4fb2bb1017a8f27fead9376e65b1276e662`; newer lifecycle changes await a fresh run |
-| WireGuard packet data plane | Not Implemented | No packet transport or real tunnel established |
-| Android TUN ownership integration | Not Implemented | Service scaffold deliberately does not establish TUN |
-| Other five engine data planes | Not Implemented | Slots and adapter contract only; no engine claimed as ready |
+| Last verified CI execution | CI Tested | Run #11 passed unit tests and Android lint on commit `f04b253d6526ba17276503cd3978260c72aa71f8` |
+| WireGuard packet data plane | Source Implemented | Upstream GoBackend integration is wired; real packet flow not yet verified on a device |
+| Android TUN integration | Source Implemented | Delegated to the single manifest-merged upstream GoBackend VPN service; device validation pending |
+| Other five engine data planes | Not Implemented | Slots only; no other engine claimed ready |
 | Self-hosted backend/server | Server Deployment Required | No server is provisioned |
 | Stable signed APK | Blocked | Permanent signing identity and release evidence absent |
 | Physical Android device verification | Not Implemented | No device test evidence |
@@ -25,9 +28,7 @@ Last updated: 2026-11-19
 
 ## Branch tracking
 
-Current source revision: `7db5f93e49f9ad7573e5332687bd89e77649f1d9`.
-
-The branch is updated directly with incremental commits. Use the branch head shown by GitHub as the authoritative current revision.
+Current source revision is the branch head shown by GitHub. All product development remains on this branch.
 
 ## Release gates
 
