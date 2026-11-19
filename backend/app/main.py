@@ -80,8 +80,8 @@ def create_app(*, database_path=None, admin_token=None, signing_key_pem=None) ->
 
     @app.get("/health/ready")
     def ready():
-        if not admin_secret:
-            raise HTTPException(status_code=503, detail="Admin authentication is not configured")
+        if len(admin_secret) < 32:
+            raise HTTPException(status_code=503, detail="Admin authentication is not securely configured")
         with db() as conn:
             conn.execute("SELECT 1").fetchone()
         load_signing_key()
