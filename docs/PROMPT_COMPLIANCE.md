@@ -48,7 +48,7 @@ Do not add a seventh engine. Each remaining engine needs license, dependency, se
 - Session controller refuses recovery while an earlier session still owns resources awaiting cleanup.
 - Android network observation moved from Activity lifecycle to Application lifecycle and clears a lost default-network observation.
 - Backend readiness now rejects admin tokens shorter than 32 characters, matching protected admin operations.
-- POSIX SQLite database file permissions are restricted to owner read/write; database connections fail closed unless the parent directory is service-owned and mode 0700, final-component symlinks are rejected where O_NOFOLLOW exists, and the database path is verified as a regular service-owned file. WAL/SHM are protected by the directory boundary.
+- POSIX SQLite database file permissions are restricted to owner read/write; database connections fail closed unless the parent directory is service-owned and mode 0700, final-component symlinks are rejected where O_NOFOLLOW exists, and the database path is verified as a regular service-owned file. WAL/SHM are protected by the directory boundary. CI #104 validates the filesystem hardening and monotonic revision transaction tests.
 - Added repository ignore protections for local environment files, private keys, keystores, databases and build outputs.
 
 ## Backend and client security boundaries
@@ -62,8 +62,8 @@ Do not add a seventh engine. Each remaining engine needs license, dependency, se
 
 ## Latest CI evidence
 
-- [Android CI #100](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44557474004), commit `f0aa000fa084c1ed49a2f2ad0b50c1cb251ac8a3`: completed successfully. Backend tests, Android unit tests, Android lint and release-variant assembly all passed.
-- CI #99 exposed a Kotlin syntax regression in `MainActivity.kt`; the invalid escaped-newline sequences were corrected and the corrected commit passed all CI jobs in #100.
+- [Android CI #104](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44558369381), source commit `4afe8436b29d9e457ccdb7a7bcca190ac6a9513e`: completed successfully. Backend tests, Android unit tests, Android lint and release-variant assembly all passed.
+- The backend audit also made signed configuration revision allocation transactional with SQLite `BEGIN IMMEDIATE` and added a regression test proving each successive publish receives a strictly increasing revision.
 - CI success is source/build evidence only. It is not Android Device Tested, Server Deployment Verified, or Production Verified.
 
 ## Remaining release blockers
