@@ -24,7 +24,7 @@ class ControlPlaneClient(
         val uri = URI(baseUrl)
         require(uri.scheme.equals("https", ignoreCase = true) && !uri.host.isNullOrBlank())
         require(uri.userInfo == null && uri.query == null && uri.fragment == null)
-        val endpoint = URI("https", null, uri.host, uri.port, uri.path.trimEnd('/') + "/v1/configuration", null, null).toURL()
+        val endpoint = URI("https", null, uri.host, uri.port, (uri.path ?: "").trimEnd('/') + "/v1/configuration", null, null).toURL()
         val connection = endpoint.openConnection() as HttpsURLConnection
         try {
             connection.requestMethod = "GET"
