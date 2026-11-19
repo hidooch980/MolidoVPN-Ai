@@ -2,7 +2,7 @@
 
 Last updated: 2026-11-19
 
-Reviewed source baseline: `60d3bfb9548767713dcc4009232d98b21c6f61da`.
+Reviewed source baseline: `ea34e01c0f70e3a4067732f66ae485990f352b44`.
 This document distinguishes repository/CI evidence from Android-device and production evidence. A green CI run is not proof of a working VPN connection.
 
 ## Current delivery decision
@@ -56,15 +56,15 @@ No seventh engine is authorized. A slot is not an implementation or a promise of
 | Complementary core | Status | Evidence / next gate |
 |---|---|---|
 | Session & TUN Supervisor | Source Implemented | Exclusive lifecycle ownership and controller tests |
-| Network Intelligence | Partially Source Implemented | Pure deterministic evaluator accepts timestamped local observations, preserves unknown values, and rejects stale/future data; Android ConnectivityManager collector and device validation remain unimplemented |
-| Adaptive Path & Policy | Not Implemented | No validated adaptive selection; no fabricated measurements |
+| Network Intelligence | Source Implemented | Timestamped evaluator plus lifecycle-bound Android default-network callback; local observation only, no active probes or telemetry; physical-device validation pending |
+| Adaptive Path & Policy | Partially Source Implemented | Deterministic policy gate for validated, fresh observations and measured Wi-Fi/metered requirements; no multi-engine path selection or handover |
 | Security & Privacy | Partially Source Implemented | Initial privacy boundaries and in-memory profile flow; full threat model/security verification remains |
-| Resilience & Recovery | Partially Source Implemented | Lifecycle cleanup retry behavior exists; device/network recovery is unverified |
-| Diagnostics & Observability | Not Implemented | No production diagnostics pipeline or telemetry service |
-| Control Plane & Configuration | Not Implemented | No backend/control-plane implementation |
-| Update & Integrity | Not Implemented | No signed update metadata, verified updater, or rollback implementation |
+| Resilience & Recovery | Partially Source Implemented | Bounded exponential-backoff planning and offline wait logic; scheduler, reconnect orchestration and device recovery remain unimplemented |
+| Diagnostics & Observability | Partially Source Implemented | Disabled-by-default bounded in-memory diagnostic ring buffer with basic secret/IP redaction; no persistence or telemetry |
+| Control Plane & Configuration | Partially Source Implemented; Server Deployment Required | Self-hosted FastAPI source for enrollment/revocation and ECDSA-signed per-device config; Android network client, TLS deployment, key management and operations remain |
+| Update & Integrity | Partially Source Implemented | Canonical ECDSA manifest and SHA-256 artifact verification primitive with expiry/rollback checks; no trusted production key, downloader, installer or persistent rollback store |
 
-## Network Intelligence implementation boundary\n\n- `NetworkIntelligenceCore` evaluates only caller-supplied, timestamped local observations.\n- Missing measurements remain null/unknown; stale and future observations are not used.\n- The evaluator performs no network probes, throughput estimates, engine selection, or telemetry transmission.\n- `AndroidNetworkObservationCollector` reads active-network capabilities without probing or telemetry; `ACCESS_NETWORK_STATE` is declared. UI/session integration, callback-driven refresh, and physical-device validation remain outstanding.\n\n## WireGuard and Android technical boundary
+## Network Intelligence implementation boundary\n\n- `NetworkIntelligenceCore` evaluates only caller-supplied, timestamped local observations.\n- Missing measurements remain null/unknown; stale and future observations are not used.\n- The evaluator performs no network probes, throughput estimates, engine selection, or telemetry transmission.\n- `AndroidNetworkObservationCollector` reads active-network capabilities without probing or telemetry; `ACCESS_NETWORK_STATE` is declared. UI/session integration, callback-driven refresh, and physical-device validation remain outstanding.\n\n## Newly added core boundaries\n\n- Android network monitoring uses the default-network callback while the activity is active; no active probing or telemetry is performed.\n- Adaptive policy only allows paths when required measurements are fresh and validated; this does not yet select among VPN engines.\n- Recovery currently calculates bounded retry plans; no automatic reconnect scheduler is connected.\n- Diagnostics are process-local, bounded, redacted and disabled by default.\n- Self-hosted backend source is in `backend/`; it requires operator-provisioned admin token, external ECDSA private key and TLS reverse proxy. No deployment is running.\n- Update integrity verifies signed canonical metadata and artifact digest only; it does not install APKs or provide persistent anti-rollback state.\n\n## WireGuard and Android technical boundary
 
 - The WireGuard adapter delegates VPN interface creation and packet routing to upstream `GoBackend`.
 - The upstream manifest-merged `GoBackend.VpnService` is the sole intended VPN service/TUN provider. Do not add a second service or create a second TUN.

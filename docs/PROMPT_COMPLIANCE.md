@@ -3,7 +3,7 @@
 Audit date: 2026-11-19
 Audited repository: `hidooch980/MolidoVPN-Ai`
 Audited branch: `development/molido-vpn-ai-from-scratch`
-Source baseline: `60d3bfb9548767713dcc4009232d98b21c6f61da`
+Source baseline: `ea34e01c0f70e3a4067732f66ae485990f352b44`
 
 This audit checks repository evidence against `docs/MASTER_SPEC.md` and the immutable owner constraints. It does not infer runtime behavior from source presence or CI success.
 
@@ -34,7 +34,7 @@ This audit checks repository evidence against `docs/MASTER_SPEC.md` and the immu
 | Tor | Not Implemented |
 | MASQUE/WARP-compatible | Not Implemented |
 
-No seventh engine is permitted. An inventory entry is not an engine implementation. Network Intelligence currently has a pure deterministic observation evaluator; the passive Android ConnectivityManager collector is implemented, but UI/session integration and device validation remain outstanding.
+No seventh engine is permitted. An inventory entry is not an engine implementation. Network collection, deterministic policy, bounded recovery planning, privacy-redacted diagnostics, signed configuration verification, and signed update verification have partial source implementations; production integration remains incomplete. Network Intelligence currently has a pure deterministic observation evaluator; the passive Android ConnectivityManager collector is implemented, but UI/session integration and device validation remain outstanding.
 
 ### Eight complementary cores
 

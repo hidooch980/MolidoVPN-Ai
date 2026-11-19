@@ -23,7 +23,7 @@ def test_enroll_publish_and_fetch_signed_configuration(tmp_path):
     assert result.status_code == 200
     payload = base64.b64decode(result.json()["payload_base64"])
     signature = base64.b64decode(result.json()["signature_base64"])
-    canonical = f"{result.json()['revision']}\\n{expires}\\n".encode() + payload
+    canonical = f"{result.json()['revision']}\n{expires}\n".encode() + payload
     key.public_key().verify(signature, canonical, ec.ECDSA(hashes.SHA256()))
 
 def test_revoked_device_cannot_fetch_configuration(tmp_path):
