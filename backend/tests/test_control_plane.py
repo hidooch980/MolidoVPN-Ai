@@ -80,3 +80,24 @@ def test_readiness_rejects_short_admin_secret(tmp_path):
     )
     response = TestClient(app).get("/health/ready")
     assert response.status_code == 503
+
+
+def test_database_file_is_owner_only_on_posix(tmp_path):
+    import os
+    import stat
+    if os.name != "posix":
+        return
+    database = tmp_path / "private-control.sqlite3"
+    client, _ = setup_client(tmp_path)
+    # Trigger the database connection against a dedicated app path.
+    app = create_app(
+        database_path=database,
+        admin_token="molido-test-admin-token-32chars-minimum",
+        signing_key_pem=ec.generate_private_key(ec.SECP256R1()).private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ),
+    )
+    TestClient(app).get("/health/ready")
+    assert stat.S_IMODE(database.stat().st_mode) == 0o600
