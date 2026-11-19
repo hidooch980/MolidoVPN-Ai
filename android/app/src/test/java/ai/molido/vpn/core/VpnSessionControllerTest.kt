@@ -103,6 +103,7 @@ class VpnSessionControllerTest {
         assertEquals(1, cleanupSession.stopCalls)
         assertEquals(SessionState.FAILED, controller.snapshot().state)
         assertEquals(EngineSlot.WIREGUARD, supervisor.currentOwner())
+        assertEquals(RecoveryAction.NONE, controller.recoveryPlan(0).action)
 
         assertTrue(controller.disconnect())
         assertEquals(2, cleanupSession.stopCalls)
