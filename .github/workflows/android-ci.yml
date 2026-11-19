@@ -37,3 +37,5 @@ jobs:
         run: gradle :android:app:testDebugUnitTest
       - name: Run Android lint
         run: gradle :android:app:lintDebug
+      - name: Assemble release variant (CI validation only; never distributed)
+        run: gradle :android:app:assembleRelease
