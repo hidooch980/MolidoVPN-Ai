@@ -118,7 +118,15 @@ def create_app(*, database_path=None, admin_token=None, signing_key_pem=None) ->
     @app.put("/v1/devices/{device_id}/configuration")
     def publish_config(device_id: str, body: PublishConfigRequest, _: None = Depends(require_admin)):
         key = load_signing_key()
-        payload = json.dumps(body.payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+        try:
+            # RFC-compliant JSON only: Python's default encoder otherwise emits
+            # NaN/Infinity tokens that are not valid interoperable JSON.
+            payload = json.dumps(
+                body.payload, sort_keys=True, separators=(",", ":"),
+                ensure_ascii=False, allow_nan=False
+            ).encode()
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="Configuration payload must be valid JSON")
         if not payload or len(payload) > 65536:
             raise HTTPException(status_code=413, detail="Configuration payload exceeds 64 KiB")
         now = int(time.time())
