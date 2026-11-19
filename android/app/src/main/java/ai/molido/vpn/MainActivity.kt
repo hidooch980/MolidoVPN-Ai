@@ -282,7 +282,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun renderState() {
+    private fun renderState(message: String? = null) {
         val snapshot = molidoApp.vpnSessions.snapshot()
         val network = molidoApp.latestNetworkAssessment()
         statusView.text = when (snapshot.state) {
@@ -309,6 +309,7 @@ class MainActivity : ComponentActivity() {
         connectButton.isEnabled = !profileText.isNullOrBlank() && snapshot.state == SessionState.IDLE &&
             network.status == NetworkAssessmentStatus.VALIDATED
         disconnectButton.isEnabled = snapshot.state != SessionState.IDLE
+        message?.let { statusView.text = it }
     }
 
     private fun setControlsEnabled(enabled: Boolean) {
