@@ -146,6 +146,10 @@ def create_app(*, database_path=None, admin_token=None, signing_key_pem=None) ->
         if body.expires_at <= now:
             raise HTTPException(status_code=400, detail="Configuration expiry must be in the future")
         with db() as conn:
+            # Serialize revision allocation before reading the current value.
+            # Without an immediate write lock, concurrent publishers could both
+            # observe revision N and overwrite one another with N+1.
+            conn.execute("BEGIN IMMEDIATE")
             device = conn.execute("SELECT device_id FROM devices WHERE device_id=? AND revoked_at IS NULL", (device_id,)).fetchone()
             if device is None:
                 raise HTTPException(status_code=404, detail="Active device not found")
