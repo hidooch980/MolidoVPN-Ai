@@ -48,7 +48,7 @@ Do not add a seventh engine. Each remaining engine needs license, dependency, se
 - Session controller refuses recovery while an earlier session still owns resources awaiting cleanup.
 - Android network observation moved from Activity lifecycle to Application lifecycle and clears a lost default-network observation.
 - Backend readiness now rejects admin tokens shorter than 32 characters, matching protected admin operations.
-- POSIX SQLite database file permissions are restricted to owner read/write; production data directory, WAL/SHM and backups must also be private.
+- POSIX SQLite database file permissions are restricted to owner read/write; database connections fail closed unless the parent directory is service-owned and mode 0700, final-component symlinks are rejected where O_NOFOLLOW exists, and the database path is verified as a regular service-owned file. WAL/SHM are protected by the directory boundary.
 - Added repository ignore protections for local environment files, private keys, keystores, databases and build outputs.
 
 ## Backend and client security boundaries
@@ -60,7 +60,7 @@ Do not add a seventh engine. Each remaining engine needs license, dependency, se
 - Local encrypted counters do not claim protection against rooted devices or reinstall-based state reset.
 - No backend endpoint, token, signing key or public key is configured in this repository.
 
-## Remaining release blockers
+## Latest CI evidence\n\n- [Android CI #89](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44554011937), commit `fa6bfc50eb8cfd842cb0e3588a67ee885753ea9a`: completed successfully; backend tests, Android unit tests, Android lint and release-variant assembly passed.\n- Database directory/symlink hardening was committed after #89 and must pass a new CI run before it is counted as tested.\n\n## Remaining release blockers
 
 - Physical Android tests, authorized WireGuard server, DNS/IPv4/IPv6/leak tests.
 - Production backend deployment, server hardening and backup/restore evidence.
