@@ -61,6 +61,7 @@ class VpnSessionController(
         val session = try {
             adapter.start(configuration)
         } catch (failure: Throwable) {
+            pendingEngineFailures.remove(slot)
             supervisor.markFailed(slot)
             val cleanupSession = (failure as? EngineStartException)?.cleanupSession
             if (cleanupSession != null) {
@@ -74,6 +75,7 @@ class VpnSessionController(
             throw failure
         }
         if (!supervisor.markRunning(slot)) {
+            pendingEngineFailures.remove(slot)
             supervisor.markFailed(slot)
             supervisor.beginStopping(slot)
             try {
