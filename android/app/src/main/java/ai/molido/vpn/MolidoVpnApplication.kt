@@ -32,7 +32,7 @@ class MolidoVpnApplication : Application() {
     val diagnostics = DiagnosticsObservabilityCore(enabled = false)
     val trustStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { AndroidSecureTrustStore(this) }
     val controlPlaneClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { ControlPlaneClient(trustStore) }
-    val updateTrust by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { AndroidUpdateTrust(trustStore) }
+    val updateTrust by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { AndroidUpdateTrust(this, trustStore) }
 
     /** Caller supplies operator-provisioned HTTPS endpoint and ephemeral device token. */
     fun fetchRemoteConfiguration(baseUrl: String, deviceToken: String): ControlPlaneFetchResult =
