@@ -20,7 +20,7 @@ jobs:
   validate:
     name: Validate Android source
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,9 +33,42 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Run unit tests
-        run: gradle :android:app:testDebugUnitTest
-      - name: Run Android lint
-        run: gradle :android:app:lintDebug
+      - name: Run unit tests (retry transient repository failures)
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if gradle --no-daemon :android:app:testDebugUnitTest; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Gradle dependency/test attempt $attempt failed; retrying after 15 seconds."
+              sleep 15
+            fi
+          done
+          exit 1
+      - name: Run Android lint (retry transient repository failures)
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if gradle --no-daemon :android:app:lintDebug; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Gradle lint attempt $attempt failed; retrying after 15 seconds."
+              sleep 15
+            fi
+          done
+          exit 1
       - name: Assemble release variant (CI validation only; never distributed)
-        run: gradle :android:app:assembleRelease
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if gradle --no-daemon :android:app:assembleRelease; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Gradle release-assembly attempt $attempt failed; retrying after 15 seconds."
+              sleep 15
+            fi
+          done
+          exit 1
