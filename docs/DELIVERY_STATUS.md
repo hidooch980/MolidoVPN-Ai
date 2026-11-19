@@ -49,7 +49,7 @@ No seventh engine is allowed. The five remaining engines require individual upst
 
 GitHub Actions is the live source of truth for the latest commit and workflow results: https://github.com/hidooch980/MolidoVPN-Ai/actions
 
-Latest fully successful CI run: [Android CI #100](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44557474004), commit `f0aa000fa084c1ed49a2f2ad0b50c1cb251ac8a3`. Backend tests, Android unit tests, Android lint and release-variant assembly all passed. CI #99 had exposed a Kotlin syntax regression in `MainActivity.kt`; the correction is included in the #100 commit and verified by the successful run. A run counts only when completed and its relevant jobs/steps succeeded on the exact commit being assessed. CI success proves only the checks actually executed; it does not prove VPN handshake, packet routing, DNS, leak prevention or production readiness.
+Latest fully successful CI run: [Android CI #104](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44558369381), source commit `4afe8436b29d9e457ccdb7a7bcca190ac6a9513e`. Backend tests, Android unit tests, Android lint and release-variant assembly all passed. This run includes the SQLite private-directory/symlink hardening and the new atomic configuration-revision allocation using `BEGIN IMMEDIATE`, with a monotonic revision regression test. The later documentation-only commits do not alter the tested source. CI success proves only the checks actually executed; it does not prove VPN handshake, packet routing, DNS, leak prevention or production readiness.
 
 ## Real-world validation still required
 
@@ -70,7 +70,7 @@ Latest fully successful CI run: [Android CI #100](https://github.com/hidooch980/
 - Diagnostics are disabled by default, process-local and not uploaded.
 - Five engines are not implemented.
 - No permanent signing key was generated or changed.
-- Dependency vulnerability scanning, full penetration testing and physical-device testing are not yet evidenced. The latest database directory/symlink hardening is source-level only until its CI run completes.
+- Dependency vulnerability scanning, full penetration testing and physical-device testing are not yet evidenced. Database directory/symlink hardening and atomic configuration-revision allocation have passed CI #104, but they are not a substitute for production host validation.
 
 ## Stable Production release gates
 
