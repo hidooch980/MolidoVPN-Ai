@@ -2,7 +2,7 @@
 
 Last updated: 2026-11-19
 
-Current reviewed source commit: `23912126a9ae55a8ee0b5647ea0fa012d1a44a32`
+Current reviewed baseline: strict single-owner reservation and multi-controller exclusion are implemented; latest changes await CI validation.
 
 ## Repository baseline
 
@@ -12,7 +12,7 @@ Current reviewed source commit: `23912126a9ae55a8ee0b5647ea0fa012d1a44a32`
 | Master specification and architecture docs | Source Implemented | `docs/MASTER_SPEC.md`, `docs/ARCHITECTURE.md` |
 | Android Gradle application scaffold | Source Implemented | `android/app`, Gradle Kotlin DSL |
 | Fixed six-engine/eight-core inventory | Source Implemented | `ArchitectureInventory.kt` |
-| Session lifecycle coordinator | Source Implemented | `SessionSupervisor.kt`; IDLE/RESERVED/RUNNING/STOPPING/FAILED |
+| Session lifecycle coordinator | Source Implemented | `SessionSupervisor.kt`; IDLE/RESERVED/RUNNING/STOPPING/FAILED; claims are one-time and reject re-entrant or second-controller acquisition |
 | Central engine orchestration | Source Implemented | `VpnSessionController.kt`; one adapter invocation path |
 | Startup cleanup retention | Source Implemented | `EngineStartException.kt`; failed startup retains cleanup handle |
 | WireGuard Android dependency | Source Implemented | `com.wireguard.android:tunnel:1.0.20260102`, Apache-2.0 |

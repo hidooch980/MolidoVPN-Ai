@@ -132,6 +132,23 @@ class VpnSessionControllerTest {
     }
 
     @Test
+    fun separateControllersCannotStartTheSameOwnedEngineTwice() {
+        val supervisor = SessionSupervisor()
+        val firstSession = FakeSession()
+        val firstAdapter = FakeAdapter(EngineSlot.WIREGUARD, firstSession)
+        val secondAdapter = FakeAdapter(EngineSlot.WIREGUARD)
+        val firstController = VpnSessionController(supervisor, listOf(firstAdapter))
+        val secondController = VpnSessionController(supervisor, listOf(secondAdapter))
+
+        assertTrue(firstController.connect(EngineSlot.WIREGUARD, "first-config"))
+        assertFalse(secondController.connect(EngineSlot.WIREGUARD, "second-config"))
+        assertEquals(1, firstAdapter.startCalls)
+        assertEquals(0, secondAdapter.startCalls)
+        assertEquals(SessionState.RUNNING, supervisor.snapshot().state)
+        assertEquals(EngineSlot.WIREGUARD, supervisor.currentOwner())
+    }
+
+    @Test
     fun duplicateAdapterSlotsAreRejectedAtConstruction() {
         val supervisor = SessionSupervisor()
         val first = FakeAdapter(EngineSlot.WIREGUARD)
