@@ -31,7 +31,7 @@ def create_app(*, database_path=None, admin_token=None, signing_key_pem=None) ->
         db_path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
         if os.name == "posix":
             directory_stat = db_path.parent.stat()
-            if directory_stat.st_uid != os.geteuid() or stat.S_IMODE(directory_stat.st_mode) & 0o077:
+            if directory_stat.st_uid != os.geteuid() or stat.S_IMODE(directory_stat.st_mode) != 0o700:
                 raise HTTPException(status_code=503, detail="Database directory must be owned by the service user and have mode 0700")
             flags = os.O_CREAT | os.O_RDWR
             if hasattr(os, "O_NOFOLLOW"):
