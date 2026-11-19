@@ -47,6 +47,25 @@ class VpnSessionControllerTest {
     }
 
     @Test
+    fun engineFailureCallbackRacingStartupIsNotLost() {
+        val supervisor = SessionSupervisor()
+        var failureListener: (() -> Unit)? = null
+        val adapter = object : EngineAdapter, EngineFailureAwareAdapter {
+            override val slot = EngineSlot.WIREGUARD
+            override fun setFailureListener(listener: (() -> Unit)?) { failureListener = listener }
+            override fun start(configuration: String): EngineSession {
+                failureListener?.invoke()
+                return FakeSession()
+            }
+        }
+        val controller = VpnSessionController(supervisor, listOf(adapter))
+        assertFalse(controller.connect(EngineSlot.WIREGUARD, "in-memory-profile"))
+        assertEquals(SessionState.FAILED, controller.snapshot().state)
+        assertEquals(EngineSlot.WIREGUARD, supervisor.currentOwner())
+        assertEquals(RecoveryAction.SCHEDULE_RETRY, controller.prepareRecovery(0).action)
+    }
+
+    @Test
     fun duplicateOrLateEngineFailureCallbacksDoNotChangeStoppingOrIdleSession() {
         val supervisor = SessionSupervisor()
         var failureListener: (() -> Unit)? = null

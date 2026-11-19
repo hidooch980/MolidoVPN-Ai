@@ -15,6 +15,7 @@ class VpnSessionController(
     private var activeSession: EngineSession? = null
     private var activeOwner: EngineSlot? = null
     private var lastPathDecision: AdaptivePathDecision? = null
+    private val pendingEngineFailures = mutableSetOf<EngineSlot>()
 
     init {
         adaptersBySlot.values.filterIsInstance<EngineFailureAwareAdapter>().forEach { aware ->
@@ -90,6 +91,11 @@ class VpnSessionController(
         }
         activeSession = session
         activeOwner = slot
+        if (pendingEngineFailures.remove(slot)) {
+            supervisor.markFailed(slot)
+            record("ENGINE_SESSION_FAILED", "Engine failed during startup completion; TUN ownership retained")
+            return false
+        }
         record("SESSION_STARTED", "VPN engine session entered RUNNING state")
         return true
     }
