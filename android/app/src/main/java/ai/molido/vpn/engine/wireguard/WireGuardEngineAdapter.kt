@@ -54,22 +54,22 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter {
             }
         }
 
-        // Reserve adapter-local ownership before native startup so cleanup can be retried.
+        // Reserve adapter-local ownership before native startup so failed cleanup can be retried.
         activeTunnel = tunnel
         try {
             val resultingState = backend.setState(tunnel, Tunnel.State.UP, parsed)
             check(resultingState == Tunnel.State.UP && backend.getState(tunnel) == Tunnel.State.UP) {
                 "WireGuard backend did not enter UP state"
             }
-        } catch (failure: Exception) {
-            var cleanupFailure: Exception? = null
+        } catch (failure: Throwable) {
+            var cleanupFailure: Throwable? = null
             try {
                 val down = backend.setState(tunnel, Tunnel.State.DOWN, null)
                 check(down == Tunnel.State.DOWN && backend.getState(tunnel) == Tunnel.State.DOWN) {
                     "WireGuard backend cleanup did not reach DOWN state"
                 }
                 activeTunnel = null
-            } catch (cleanup: Exception) {
+            } catch (cleanup: Throwable) {
                 cleanupFailure = cleanup
             }
             if (cleanupFailure != null) {

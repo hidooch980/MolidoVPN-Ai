@@ -161,7 +161,7 @@ class MainActivity : ComponentActivity() {
                     }
                     renderState()
                 }
-            } catch (_: Exception) {
+            } catch (_: Throwable) {
                 runOnUiThread {
                     setControlsEnabled(true)
                     statusView.text = "WireGuard startup failed. If cleanup is pending, the session remains reserved until disconnect succeeds."

@@ -24,14 +24,14 @@ class VpnSessionController(
 
         val session = try {
             adapter.start(configuration)
-        } catch (failure: Exception) {
+        } catch (failure: Throwable) {
             supervisor.markFailed(slot)
             val cleanupSession = (failure as? EngineStartException)?.cleanupSession
             if (cleanupSession != null) {
                 activeSession = cleanupSession
                 activeOwner = slot
             } else {
-                // Adapter contract: a plain startup exception means its rollback completed.
+                // A plain adapter startup failure contractually means rollback completed.
                 supervisor.beginStopping(slot)
                 supervisor.release(slot)
             }
@@ -43,7 +43,7 @@ class VpnSessionController(
             supervisor.beginStopping(slot)
             try {
                 session.stop()
-            } catch (failure: Exception) {
+            } catch (failure: Throwable) {
                 activeSession = session
                 activeOwner = slot
                 supervisor.markFailed(slot)
@@ -64,7 +64,7 @@ class VpnSessionController(
         if (!supervisor.beginStopping(owner)) return false
         try {
             activeSession?.stop()
-        } catch (failure: Exception) {
+        } catch (failure: Throwable) {
             // Retain the owner in FAILED state; a later disconnect may retry cleanup.
             supervisor.markFailed(owner)
             throw failure
