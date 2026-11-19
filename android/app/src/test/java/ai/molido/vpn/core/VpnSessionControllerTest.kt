@@ -27,6 +27,22 @@ class VpnSessionControllerTest {
     }
 
     @Test
+    fun networkLossBlocksNewStartUntilValidatedConnectivityReturns() {
+        val supervisor = SessionSupervisor()
+        val wireguard = FakeAdapter(EngineSlot.WIREGUARD)
+        var network = NetworkAssessment(NetworkAssessmentStatus.NOT_VALIDATED)
+        val controller = VpnSessionController(
+            supervisor, listOf(wireguard), networkAssessmentProvider = { network }
+        )
+        assertFalse(controller.connect(EngineSlot.WIREGUARD, "offline"))
+        assertEquals(0, wireguard.startCalls)
+        assertEquals(SessionState.IDLE, controller.snapshot().state)
+        network = NetworkAssessment(NetworkAssessmentStatus.VALIDATED)
+        assertTrue(controller.connect(EngineSlot.WIREGUARD, "after-internet-return"))
+        assertEquals(1, wireguard.startCalls)
+    }
+
+    @Test
     fun connectsOnlyOneEngineAndDoesNotStartAnotherAdapter() {
         val supervisor = SessionSupervisor()
         val wireguard = FakeAdapter(EngineSlot.WIREGUARD)
