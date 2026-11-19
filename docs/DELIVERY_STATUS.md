@@ -42,7 +42,7 @@ No seventh engine is allowed. The five remaining engines require individual upst
 - Network observation remains active while the app process is alive, including when the Activity is backgrounded.
 - Loss of the observed default network clears the observation instead of retaining stale network facts.
 - Backend readiness enforces the same 32-character admin-token minimum as protected admin operations.
-- SQLite database files are restricted to POSIX owner-only permissions; the service now fails readiness closed unless the database parent directory is owned by the service account and mode 0700, rejects unsafe final-component symlinks where O_NOFOLLOW is available, and verifies the database is a regular service-owned file. WAL/SHM sidecars inherit the private directory boundary.
+- SQLite database files are restricted to POSIX owner-only permissions; the service now fails readiness closed unless the database parent directory is owned by the service account and exact mode 0700 (not merely absence of group/world access), rejects unsafe final-component symlinks where O_NOFOLLOW is available, and verifies the database is a regular service-owned file. WAL/SHM sidecars inherit the private directory boundary.
 - Added repository ignores for local secrets, databases, keystores and build outputs.
 
 ## CI evidence
