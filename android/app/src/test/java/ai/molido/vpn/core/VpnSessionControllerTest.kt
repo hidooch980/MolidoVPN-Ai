@@ -114,6 +114,7 @@ class VpnSessionControllerTest {
         }
         assertEquals(SessionState.FAILED, controller.snapshot().state)
         assertEquals(EngineSlot.WIREGUARD, supervisor.currentOwner())
+        assertFalse(controller.connect(EngineSlot.WIREGUARD, "retry-while-cleanup-pending"))
         assertFalse(controller.connect(EngineSlot.TOR, "other-config"))
         assertEquals(0, tor.startCalls)
 

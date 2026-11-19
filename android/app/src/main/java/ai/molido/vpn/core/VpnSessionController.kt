@@ -18,7 +18,9 @@ class VpnSessionController(
 
     @Synchronized
     fun connect(slot: EngineSlot, configuration: String): Boolean {
-        if (activeSession != null) return activeOwner == slot
+        if (activeSession != null) {
+            return activeOwner == slot && supervisor.snapshot().state == SessionState.RUNNING
+        }
         val adapter = adaptersBySlot[slot] ?: return false
         if (!supervisor.claim(slot)) return false
 
