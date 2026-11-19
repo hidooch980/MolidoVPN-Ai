@@ -2,7 +2,7 @@
 
 Last updated: 2026-11-19
 
-Current reviewed baseline: strict single-owner reservation and multi-controller exclusion are implemented; latest changes await CI validation.
+Current reviewed baseline: strict single-owner reservation, multi-controller exclusion, startup cleanup retention, and controller retry behavior are implemented. Latest CI validation is green for the current source commit.
 
 ## Repository baseline
 
@@ -14,14 +14,13 @@ Current reviewed baseline: strict single-owner reservation and multi-controller 
 | Fixed six-engine/eight-core inventory | Source Implemented | `ArchitectureInventory.kt` |
 | Session lifecycle coordinator | Source Implemented | `SessionSupervisor.kt`; IDLE/RESERVED/RUNNING/STOPPING/FAILED; claims are one-time and reject re-entrant or second-controller acquisition |
 | Central engine orchestration | Source Implemented | `VpnSessionController.kt`; one adapter invocation path |
-| Startup cleanup retention | Source Implemented | `EngineStartException.kt`; failed startup retains cleanup handle |
+| Startup cleanup retention | Source Implemented | `EngineAdapter.kt`; `EngineStartException` carries a cleanup handle and controller retains ownership when cleanup is pending |
 | WireGuard Android dependency | Source Implemented | `com.wireguard.android:tunnel:1.0.20260102`, Apache-2.0 |
 | WireGuard engine adapter | Source Implemented | `WireGuardEngineAdapter.kt`; parses in-memory config and uses upstream GoBackend |
 | Single VPN service declaration | Source Implemented | Upstream GoBackend VPN service is the only intended TUN provider |
-| Controller and lifecycle tests | Source Implemented | Coverage includes exclusive engine ownership, startup rollback, retained cleanup ownership, retry, duplicate adapter rejection, and idempotent idle disconnect; latest revision awaits CI |
+| Controller and lifecycle tests | CI Tested | Coverage includes exclusive engine ownership, startup rollback, retained cleanup ownership, retry, duplicate adapter rejection, and idempotent idle disconnect; latest revision passed run #39 |
 | CI dependency retry | Source Implemented | Three bounded attempts for test, lint, and release assembly |
-| Last verified green CI | Historical CI Tested | Run #11 passed unit tests and lint on `f04b253d6526ba17276503cd3978260c72aa71f8`; this is not evidence for the current revision |
-| Recent CI validation | Blocked / unresolved | Run #32 exposed a Kotlin test compilation error (`EngineStartExceptionTest` nullable cleanup handle); the error was corrected in commit `23912126a9ae55a8ee0b5647ea0fa012d1a44a32`. Run #34 is still reported `in_progress` by GitHub after its runner stopped updating; its job logs endpoint currently returns `BlobNotFound`. No successful result is claimed for the corrected commit. |
+| Latest verified CI | CI Tested | Run #39 passed unit tests, Android lint, and release-variant assembly on commit `cbec3dfcc25d8f59fc492415d9f5f293e8b9110a`; CI assembly is validation only and is not a distributed APK |
 | WireGuard packet data plane | Source Implemented | Upstream GoBackend integration is present; no device packet-flow proof |
 | Android TUN integration | Source Implemented | Delegated to upstream GoBackend VPN service; device validation pending |
 | Other five engine data planes | Not Implemented | Inventory slots only |
