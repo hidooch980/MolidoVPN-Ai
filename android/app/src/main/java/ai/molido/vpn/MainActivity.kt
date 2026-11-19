@@ -18,6 +18,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import ai.molido.vpn.core.EngineSlot
 import ai.molido.vpn.core.NetworkAssessmentStatus
+import ai.molido.vpn.core.AdaptivePathPolicyCore
+import ai.molido.vpn.core.PathDecision
 import ai.molido.vpn.core.NetworkPolicy
 import ai.molido.vpn.core.RecoveryAction
 import ai.molido.vpn.core.SessionState
@@ -33,6 +35,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var disconnectButton: Button
     private lateinit var recoveryButton: Button
     private lateinit var policyView: TextView
+    private lateinit var profileImportButton: Button
+    private lateinit var wireGuardStateView: TextView
+    private var controlsBusy = false
     private val policyButtons = mutableMapOf<NetworkPolicy, Button>()
     private var profileText: String? = null
     private var connectAfterConsent = false
@@ -40,6 +45,11 @@ class MainActivity : ComponentActivity() {
 
     private val profilePicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
+            if (molidoApp.vpnSessions.snapshot().state != SessionState.IDLE) {
+                Toast.makeText(this, "هنگام فعال‌بودن یا پاک‌سازی نشست، تغییر پروفایل مجاز نیست.", Toast.LENGTH_LONG).show()
+                renderState()
+                return@registerForActivityResult
+            }
             val uri = result.data?.data ?: return@registerForActivityResult
             try {
                 profileText = contentResolver.openInputStream(uri)?.use { input ->
@@ -148,7 +158,7 @@ class MainActivity : ComponentActivity() {
         val engineCard = card()
         engineCard.addView(label("موتورهای VPN", 17f, AQUA, true))
         engineCard.addView(label("فقط موتورهای پیاده‌سازی و آزمایش‌شده قابل انتخاب هستند.", 12f, MUTED, false))
-        engineCard.addView(engineRow("WireGuard", "پیاده‌سازی شده • نیازمند تست دستگاه", true))
+        engineCard.addView(engineRow("WireGuard", "پیاده‌سازی شده • نیازمند تست دستگاه", true, wireGuard = true))
         engineCard.addView(engineRow("AmneziaWG", "هنوز پیاده‌سازی نشده", false))
         engineCard.addView(engineRow("V2Ray / Xray", "هنوز پیاده‌سازی نشده", false))
         engineCard.addView(engineRow("Psiphon", "هنوز پیاده‌سازی نشده", false))
@@ -158,8 +168,12 @@ class MainActivity : ComponentActivity() {
 
         val profileCard = card()
         profileCard.addView(label("پروفایل و تنظیمات اتصال", 17f, AQUA, true))
-        val import = glassButton("＋  وارد کردن پروفایل WireGuard", false)
-        import.setOnClickListener {
+        profileImportButton = glassButton("＋  وارد کردن پروفایل WireGuard", false)
+        profileImportButton.setOnClickListener {
+            if (molidoApp.vpnSessions.snapshot().state != SessionState.IDLE) {
+                Toast.makeText(this, "ابتدا نشست VPN را به‌طور کامل قطع کنید.", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
                 type = "*/*"
@@ -167,7 +181,7 @@ class MainActivity : ComponentActivity() {
             }
             profilePicker.launch(intent)
         }
-        profileCard.addView(import, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(12) })
+        profileCard.addView(profileImportButton, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(12) })
         policyView = label("سیاست شبکه: هر شبکه معتبر", 13f, WHITE, true).apply { setPadding(0, dp(14), 0, dp(8)) }
         profileCard.addView(policyView)
         val policies = row()
@@ -195,7 +209,7 @@ class MainActivity : ComponentActivity() {
         setContentView(scroll)
     }
 
-    private fun engineRow(name: String, state: String, available: Boolean): View {
+    private fun engineRow(name: String, state: String, available: Boolean, wireGuard: Boolean = false): View {
         val line = row().apply {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(10), dp(10), dp(10), dp(10))
@@ -203,7 +217,9 @@ class MainActivity : ComponentActivity() {
         }
         val titleColumn = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         titleColumn.addView(label(name, 14f, if (available) WHITE else MUTED, true))
-        titleColumn.addView(label(state, 11f, if (available) AQUA else MUTED, false))
+        val stateLabel = label(state, 11f, if (available) AQUA else MUTED, false)
+        if (wireGuard) wireGuardStateView = stateLabel
+        titleColumn.addView(stateLabel)
         line.addView(titleColumn, LinearLayout.LayoutParams(0, -2, 1f))
         line.addView(label(if (available) "●" else "○", 18f, if (available) AQUA else MUTED, true))
         val params = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) }
@@ -247,6 +263,12 @@ class MainActivity : ComponentActivity() {
     private fun requestVpnConsentAndConnect() {
         if (profileText.isNullOrBlank()) {
             Toast.makeText(this, "ابتدا پروفایل WireGuard را وارد کنید.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val decision = AdaptivePathPolicyCore.evaluate(molidoApp.latestNetworkAssessment(), molidoApp.currentNetworkPolicy())
+        if (decision.decision != PathDecision.ALLOW) {
+            Toast.makeText(this, decision.reason, Toast.LENGTH_LONG).show()
+            renderState()
             return
         }
         val consent = VpnService.prepare(this)
@@ -302,12 +324,21 @@ class MainActivity : ComponentActivity() {
     private fun renderState(message: String? = null) {
         val snapshot = molidoApp.vpnSessions.snapshot()
         val network = molidoApp.latestNetworkAssessment()
+        val activePolicy = molidoApp.currentNetworkPolicy()
+        val pathDecision = AdaptivePathPolicyCore.evaluate(network, activePolicy)
         statusView.text = when (snapshot.state) {
             SessionState.IDLE -> "●  قطع • آماده اتصال"
             SessionState.RESERVED -> "◌  در حال راه‌اندازی"
             SessionState.RUNNING -> "●  موتور فعال • هندشیک تأیید نشده"
             SessionState.STOPPING -> "◌  در حال پاک‌سازی نشست"
             SessionState.FAILED -> "!  خطا • پاک‌سازی لازم است"
+        }
+        wireGuardStateView.text = when (snapshot.state) {
+            SessionState.IDLE -> "آداپتور موجود • آماده، اتصال تأیید نشده"
+            SessionState.RESERVED -> "در حال ایجاد نشست و تخصیص TUN"
+            SessionState.RUNNING -> "موتور فعال • هندشیک و ترافیک تأیید نشده"
+            SessionState.STOPPING -> "در حال توقف • مالکیت TUN حفظ شده"
+            SessionState.FAILED -> "خطا • مالکیت تا پاک‌سازی حفظ شده"
         }
         networkView.text = buildString {
             append("وضعیت: ").append(when (network.status) {
@@ -323,10 +354,11 @@ class MainActivity : ComponentActivity() {
         }
         disconnectButton.visibility = if (snapshot.state == SessionState.IDLE) View.GONE else View.VISIBLE
         recoveryButton.visibility = if (snapshot.state == SessionState.FAILED) View.VISIBLE else View.GONE
-        connectButton.isEnabled = !profileText.isNullOrBlank() && snapshot.state == SessionState.IDLE &&
-            network.status == NetworkAssessmentStatus.VALIDATED
-        disconnectButton.isEnabled = snapshot.state != SessionState.IDLE
-        val activePolicy = molidoApp.currentNetworkPolicy()
+        connectButton.isEnabled = !controlsBusy && !profileText.isNullOrBlank() && snapshot.state == SessionState.IDLE &&
+            pathDecision.decision == PathDecision.ALLOW
+        disconnectButton.isEnabled = !controlsBusy && snapshot.state != SessionState.IDLE
+        profileImportButton.isEnabled = !controlsBusy && snapshot.state == SessionState.IDLE
+        policyButtons.values.forEach { it.isEnabled = !controlsBusy && snapshot.state == SessionState.IDLE }
         policyView.text = "سیاست شبکه: " + when (activePolicy) {
             NetworkPolicy.ANY_VALIDATED -> "هر شبکه معتبر"
             NetworkPolicy.UNMETERED_ONLY -> "فقط شبکه بدون هزینه"
@@ -337,8 +369,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun setControlsEnabled(enabled: Boolean) {
-        connectButton.isEnabled = enabled && !profileText.isNullOrBlank()
-        disconnectButton.isEnabled = enabled
+        controlsBusy = !enabled
+        renderState()
     }
 
     private fun card() = LinearLayout(this).apply {
