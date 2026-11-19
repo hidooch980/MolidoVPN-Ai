@@ -3,7 +3,6 @@ package ai.molido.vpn.core
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
-import android.net.NetworkRequest
 import android.os.Handler
 import android.os.Looper
 
@@ -32,8 +31,8 @@ class AndroidNetworkObservationMonitor(
 
     @Synchronized fun start() {
         if (registered) return
-        val request = NetworkRequest.Builder().clearCapabilities().build()
-        connectivityManager.registerNetworkCallback(request, callback, Handler(Looper.getMainLooper()))
+        // This API observes only the system default network and is available at minSdk 26.
+        connectivityManager.registerDefaultNetworkCallback(callback, Handler(Looper.getMainLooper()))
         registered = true
         publish(connectivityManager.activeNetwork)
     }
