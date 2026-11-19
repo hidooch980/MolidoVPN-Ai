@@ -86,11 +86,15 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         molidoApp.onNetworkAssessmentChanged = { runOnUiThread { renderState() } }
+        molidoApp.vpnSessions.onSessionStateChanged = {
+            runOnUiThread { renderState() }
+        }
         renderState()
     }
 
     override fun onStop() {
         molidoApp.onNetworkAssessmentChanged = null
+        molidoApp.vpnSessions.onSessionStateChanged = null
         super.onStop()
     }
 
@@ -219,7 +223,13 @@ class MainActivity : ComponentActivity() {
             NetworkAssessmentStatus.STALE -> "Network: measurement is stale"
             NetworkAssessmentStatus.UNKNOWN -> "Network: measurements unavailable"
         }
-        statusView.text = SessionStatusText.render(snapshot, detail) + "\n" + networkText
+        val stateDetail = detail ?: when (snapshot.state) {
+            SessionState.FAILED -> "Recovery required: disconnect to finish cleanup. Once cleanup succeeds and the network is validated, connect again."
+            SessionState.STOPPING -> "Do not start another engine while cleanup is running."
+            SessionState.RUNNING -> "Engine backend is active; peer handshake and internet traffic are not yet verified."
+            else -> null
+        }
+        statusView.text = SessionStatusText.render(snapshot, stateDetail) + "\n" + networkText
         disconnectButton.visibility =
             if (snapshot.state == SessionState.IDLE) View.GONE else View.VISIBLE
     }
