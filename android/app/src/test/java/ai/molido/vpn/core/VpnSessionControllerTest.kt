@@ -93,8 +93,21 @@ class VpnSessionControllerTest {
         }
         assertEquals(SessionState.FAILED, controller.snapshot().state)
         assertEquals(EngineSlot.WIREGUARD, supervisor.currentOwner())
+
+        try {
+            controller.disconnect()
+            fail("Expected first cleanup attempt to fail")
+        } catch (_: IllegalStateException) {
+            // Cleanup ownership must remain reserved after a failed stop.
+        }
+        assertEquals(2, cleanupSession.stopCalls)
+        assertEquals(SessionState.FAILED, controller.snapshot().state)
+        assertEquals(EngineSlot.WIREGUARD, supervisor.currentOwner())
+
         assertTrue(controller.disconnect())
+        assertEquals(3, cleanupSession.stopCalls)
         assertEquals(SessionState.IDLE, controller.snapshot().state)
+        assertNull(supervisor.currentOwner())
     }
 
     @Test
