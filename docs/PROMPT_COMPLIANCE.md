@@ -62,8 +62,9 @@ Do not add a seventh engine. Each remaining engine needs license, dependency, se
 
 ## Latest CI evidence
 
-- CI #89 (`fa6bfc50eb8cfd842cb0e3588a67ee885753ea9a`) passed backend tests, Android unit tests, Android lint and release-variant assembly: https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44554011937
-- CI #99 (`54a6e82a035cfbc76b2a4abba06ee4241f3bbd50`) passed backend tests but failed Android compilation because two literal escaped-newline sequences were inserted into MainActivity.kt during a profile-import/UI feedback edit. This regression is corrected in source and awaits a fresh complete CI run: https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44556612173
+- [Android CI #100](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44557474004), commit `f0aa000fa084c1ed49a2f2ad0b50c1cb251ac8a3`: completed successfully. Backend tests, Android unit tests, Android lint and release-variant assembly all passed.
+- CI #99 exposed a Kotlin syntax regression in `MainActivity.kt`; the invalid escaped-newline sequences were corrected and the corrected commit passed all CI jobs in #100.
+- CI success is source/build evidence only. It is not Android Device Tested, Server Deployment Verified, or Production Verified.
 
 ## Remaining release blockers
 
