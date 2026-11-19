@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import ai.molido.vpn.core.AndroidNetworkObservationMonitor
 import ai.molido.vpn.core.AndroidSecureTrustStore
 import ai.molido.vpn.core.AndroidUpdateTrust
+import ai.molido.vpn.core.AndroidUpdateInstaller
 import ai.molido.vpn.core.ControlPlaneClient
 import ai.molido.vpn.core.ControlPlaneFetchResult
 import ai.molido.vpn.core.DiagnosticsObservabilityCore
@@ -33,6 +34,7 @@ class MolidoVpnApplication : Application() {
     val trustStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { AndroidSecureTrustStore(this) }
     val controlPlaneClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { ControlPlaneClient(trustStore) }
     val updateTrust by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { AndroidUpdateTrust(this, trustStore) }
+    val updateInstaller by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { AndroidUpdateInstaller(this, updateTrust) }
 
     /** Caller supplies operator-provisioned HTTPS endpoint and ephemeral device token. */
     fun fetchRemoteConfiguration(baseUrl: String, deviceToken: String): ControlPlaneFetchResult =

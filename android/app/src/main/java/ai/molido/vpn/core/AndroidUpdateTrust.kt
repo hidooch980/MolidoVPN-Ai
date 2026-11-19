@@ -4,12 +4,8 @@ import android.content.Context
 import android.os.Build
 
 /**
- * Couples update verification to the Android Keystore trust store.
- * The anti-rollback floor is the greater of the installed package version and
- * the encrypted monotonic counter. A caller cannot supply an arbitrary version.
- *
- * A PackageInstaller callback integration is still required before this is a
- * complete update workflow.
+ * Couples signed update verification to Android Keystore trust and the actual
+ * installed package version. The encrypted counter is an additional rollback floor.
  */
 class AndroidUpdateTrust(
     context: Context,
@@ -22,10 +18,7 @@ class AndroidUpdateTrust(
         artifact: ByteArray,
         nowEpochSeconds: Long
     ): UpdateVerificationResult {
-        val installedFloor = maxOf(
-            trustStore.currentInstalledVersionCode(),
-            installedPackageVersionCode()
-        )
+        val installedFloor = maxOf(trustStore.currentInstalledVersionCode(), installedPackageVersionCode())
         return UpdateIntegrityCore(trustStore.loadUpdatePublicKey()).verify(
             manifest = manifest,
             artifact = artifact,
@@ -35,25 +28,25 @@ class AndroidUpdateTrust(
     }
 
     /**
-     * Internal post-install hook. Reads the version actually installed by Android;
-     * callers cannot claim success by passing an arbitrary future version number.
+     * Called only after PackageInstaller reports STATUS_SUCCESS. The package manager
+     * is authoritative; duplicate success callbacks are idempotent.
      */
-    internal fun recordSuccessfulInstall() {
+    @Synchronized
+    internal fun recordSuccessfulInstall(expectedVersionCode: Long) {
+        require(expectedVersionCode > 0)
         val installedVersion = installedPackageVersionCode()
-        val current = trustStore.currentInstalledVersionCode()
-        check(installedVersion > current) {
-            "Installed package version must advance the trusted version counter"
+        check(installedVersion == expectedVersionCode) {
+            "Installed package version does not match the verified update"
         }
-        trustStore.advanceInstalledVersionCode(installedVersion)
+        val current = trustStore.currentInstalledVersionCode()
+        check(installedVersion >= current) { "Installed package is below the trusted version floor" }
+        if (installedVersion > current) trustStore.advanceInstalledVersionCode(installedVersion)
     }
 
     @Suppress("DEPRECATION")
     private fun installedPackageVersionCode(): Long {
         val packageInfo = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            packageInfo.longVersionCode
-        } else {
-            packageInfo.versionCode.toLong()
-        }
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) packageInfo.longVersionCode
+        else packageInfo.versionCode.toLong()
     }
 }

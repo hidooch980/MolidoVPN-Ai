@@ -15,6 +15,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- Internal PackageInstaller result callback; never exported to other apps. -->
+        <receiver
+            android:name=".UpdateInstallStatusReceiver"
+            android:exported="false" />
         <!-- The WireGuard AAR merges GoBackend.VpnService as the sole VPN service/TUN provider. -->
     </application>
 </manifest>
