@@ -138,7 +138,7 @@ class MainActivity : Activity() {
             try {
                 val started = sessions.connect(EngineSlot.WIREGUARD, configuration)
                 runOnUiThread {
-                    profileConfiguration = null
+                    if (started) profileConfiguration = null
                     setBusy(false)
                     statusView.text = if (started) {
                         "WireGuard tunnel interface started. Peer handshake, internet access, DNS and leak behavior are not yet device-verified."
