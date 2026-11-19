@@ -20,7 +20,9 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter {
     override val slot: EngineSlot = EngineSlot.WIREGUARD
 
     private val lock = Any()
-    private val backend = GoBackend(context.applicationContext)
+    private val backend: GoBackend by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        GoBackend(context.applicationContext)
+    }
     private var activeTunnel: Tunnel? = null
 
     override fun start(configuration: String): EngineSession = synchronized(lock) {
