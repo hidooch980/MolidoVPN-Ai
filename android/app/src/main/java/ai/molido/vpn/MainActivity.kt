@@ -85,11 +85,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        molidoApp.onNetworkAssessmentChanged = { runOnUiThread { renderState() } }
         molidoApp.networkMonitor.start()
         renderState()
     }
 
     override fun onStop() {
+        molidoApp.onNetworkAssessmentChanged = null
         molidoApp.networkMonitor.stop()
         super.onStop()
     }

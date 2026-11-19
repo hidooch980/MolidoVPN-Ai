@@ -23,6 +23,7 @@ class MolidoVpnApplication : Application() {
         private set
 
     private val assessment = AtomicReference(NetworkAssessment(NetworkAssessmentStatus.UNKNOWN))
+    @Volatile var onNetworkAssessmentChanged: (() -> Unit)? = null
 
     fun latestNetworkAssessment(): NetworkAssessment = assessment.get()
 
@@ -41,6 +42,7 @@ class MolidoVpnApplication : Application() {
             executor = vpnExecutor,
             onObservation = { observation ->
                 assessment.set(NetworkIntelligenceCore.assess(observation, System.currentTimeMillis()))
+                onNetworkAssessmentChanged?.invoke()
             }
         )
     }
