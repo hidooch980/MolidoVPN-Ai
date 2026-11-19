@@ -39,6 +39,25 @@ class UpdateIntegrityCoreTest {
         assertEquals(UpdateVerificationStatus.INVALID_METADATA, verifier.verify(tamperedFields, artifact, 1, 1).status)
     }
 
+    @Test fun rejectsInvalidSignatureAndMalformedMetadata() {
+        val pair = KeyPairGenerator.getInstance("EC").apply { initialize(256) }.generateKeyPair()
+        val otherPair = KeyPairGenerator.getInstance("EC").apply { initialize(256) }.generateKeyPair()
+        val artifact = byteArrayOf(9, 8, 7)
+        val hash = digest(artifact)
+        val payload = UpdateIntegrityCore.canonicalPayload(3, 500, hash)
+        val wrongSignature = Signature.getInstance("SHA256withECDSA").run {
+            initSign(otherPair.private); update(payload); sign()
+        }
+        val verifier = UpdateIntegrityCore(pair.public)
+        val invalidSignatureManifest = SignedUpdateManifest(3, 500, hash, payload, wrongSignature)
+        assertEquals(UpdateVerificationStatus.INVALID_SIGNATURE,
+            verifier.verify(invalidSignatureManifest, artifact, 1, 1).status)
+
+        val malformed = invalidSignatureManifest.copy(artifactSha256Hex = "not-a-sha256")
+        assertEquals(UpdateVerificationStatus.INVALID_METADATA,
+            verifier.verify(malformed, artifact, 1, 1).status)
+    }
+
     @Test fun rejectsExpiredManifest() {
         val pair = KeyPairGenerator.getInstance("EC").apply { initialize(256) }.generateKeyPair()
         val artifact = byteArrayOf(1)
