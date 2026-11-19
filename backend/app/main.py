@@ -1,5 +1,5 @@
 from __future__ import annotations
-import base64, hashlib, hmac, json, os, secrets, sqlite3, time, uuid
+import base64, hashlib, hmac, json, os, secrets, sqlite3, stat, time, uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
@@ -26,14 +26,27 @@ def create_app(*, database_path=None, admin_token=None, signing_key_pem=None) ->
     app = FastAPI(title="MolidoVPN Self-hosted Control Plane", version="0.1.0", docs_url=None, redoc_url=None)
 
     def connect_db():
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-        # Device-token hashes and signed configuration payloads may be sensitive.
-        # Create/restrict the SQLite file before opening it; never chmod its parent,
-        # which may be a shared operator-managed directory.
+        # The parent directory also contains SQLite WAL/SHM sidecars. Keep the
+        # entire directory owner-only instead of relying on umask or convention.
+        db_path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
         if os.name == "posix":
-            fd = os.open(db_path, os.O_CREAT | os.O_RDWR, 0o600)
-            os.close(fd)
-            os.chmod(db_path, 0o600)
+            directory_stat = db_path.parent.stat()
+            if directory_stat.st_uid != os.geteuid() or stat.S_IMODE(directory_stat.st_mode) & 0o077:
+                raise HTTPException(status_code=503, detail="Database directory must be owned by the service user and have mode 0700")
+            flags = os.O_CREAT | os.O_RDWR
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            try:
+                fd = os.open(db_path, flags, 0o600)
+            except OSError:
+                raise HTTPException(status_code=503, detail="Database file cannot be opened safely")
+            try:
+                file_stat = os.fstat(fd)
+                if not stat.S_ISREG(file_stat.st_mode) or file_stat.st_uid != os.geteuid():
+                    raise HTTPException(status_code=503, detail="Database path must be a regular file owned by the service user")
+                os.fchmod(fd, 0o600)
+            finally:
+                os.close(fd)
         conn = sqlite3.connect(db_path, timeout=10)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
