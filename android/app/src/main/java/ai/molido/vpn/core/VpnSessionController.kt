@@ -22,25 +22,40 @@ class VpnSessionController(
         val adapter = adaptersBySlot[slot] ?: return false
         if (!supervisor.claim(slot)) return false
 
-        try {
-            val session = adapter.start(configuration)
-            if (!supervisor.markRunning(slot)) {
-                supervisor.markFailed(slot)
-                supervisor.beginStopping(slot)
-                session.stop()
-                supervisor.release(slot)
-                return false
-            }
-            activeSession = session
-            activeOwner = slot
-            return true
+        val session = try {
+            adapter.start(configuration)
         } catch (failure: Exception) {
-            // Keep the ownership gate closed until the failed startup is unwound.
             supervisor.markFailed(slot)
-            supervisor.beginStopping(slot)
-            supervisor.release(slot)
+            val cleanupSession = (failure as? EngineStartException)?.cleanupSession
+            if (cleanupSession != null) {
+                activeSession = cleanupSession
+                activeOwner = slot
+            } else {
+                // Adapter contract: a plain startup exception means its rollback completed.
+                supervisor.beginStopping(slot)
+                supervisor.release(slot)
+            }
             throw failure
         }
+
+        if (!supervisor.markRunning(slot)) {
+            supervisor.markFailed(slot)
+            supervisor.beginStopping(slot)
+            try {
+                session.stop()
+            } catch (failure: Exception) {
+                activeSession = session
+                activeOwner = slot
+                supervisor.markFailed(slot)
+                throw failure
+            }
+            check(supervisor.release(slot)) { "Session ownership could not be released after startup rollback" }
+            return false
+        }
+
+        activeSession = session
+        activeOwner = slot
+        return true
     }
 
     @Synchronized

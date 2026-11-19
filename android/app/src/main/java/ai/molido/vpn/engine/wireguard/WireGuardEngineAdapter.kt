@@ -7,15 +7,14 @@ import com.wireguard.config.Config
 import ai.molido.vpn.core.EngineAdapter
 import ai.molido.vpn.core.EngineSession
 import ai.molido.vpn.core.EngineSlot
+import ai.molido.vpn.core.EngineStartException
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 
 /**
  * WireGuard userspace adapter backed by the upstream embeddable Android tunnel library.
- *
- * GoBackend's manifest-merged GoBackend.VpnService is the one VPN service/TUN provider
- * for this initial data plane. The app-level VpnSessionController is the sole caller of
- * this adapter. Do not add another VpnService or call Builder.establish() elsewhere.
+ * GoBackend's manifest-merged GoBackend.VpnService is the one VPN service/TUN provider.
+ * VpnSessionController is the sole application-level caller of this adapter.
  */
 class WireGuardEngineAdapter(context: Context) : EngineAdapter {
     override val slot: EngineSlot = EngineSlot.WIREGUARD
@@ -34,33 +33,11 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter {
         require(parsed.peers.isNotEmpty()) { "WireGuard configuration must contain at least one peer" }
 
         val tunnel = object : Tunnel {
-            @Volatile private var state: Tunnel.State = Tunnel.State.DOWN
-
             override fun getName(): String = TUNNEL_NAME
-
-            override fun onStateChange(newState: Tunnel.State) {
-                state = newState
-            }
-
-            fun currentState(): Tunnel.State = state
+            override fun onStateChange(newState: Tunnel.State) = Unit
         }
 
-        try {
-            val resultingState = backend.setState(tunnel, Tunnel.State.UP, parsed)
-            check(resultingState == Tunnel.State.UP && backend.getState(tunnel) == Tunnel.State.UP) {
-                "WireGuard backend did not enter UP state"
-            }
-            activeTunnel = tunnel
-        } catch (failure: Exception) {
-            try {
-                backend.setState(tunnel, Tunnel.State.DOWN, null)
-            } catch (cleanupFailure: Exception) {
-                failure.addSuppressed(cleanupFailure)
-            }
-            throw failure
-        }
-
-        object : EngineSession {
+        val session = object : EngineSession {
             private var stopped = false
 
             override fun stop() = synchronized(lock) {
@@ -74,6 +51,38 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter {
                 stopped = true
             }
         }
+
+        // Reserve adapter-local ownership before native startup so cleanup can be retried.
+        activeTunnel = tunnel
+        try {
+            val resultingState = backend.setState(tunnel, Tunnel.State.UP, parsed)
+            check(resultingState == Tunnel.State.UP && backend.getState(tunnel) == Tunnel.State.UP) {
+                "WireGuard backend did not enter UP state"
+            }
+        } catch (failure: Exception) {
+            var cleanupFailure: Exception? = null
+            try {
+                val down = backend.setState(tunnel, Tunnel.State.DOWN, null)
+                check(down == Tunnel.State.DOWN && backend.getState(tunnel) == Tunnel.State.DOWN) {
+                    "WireGuard backend cleanup did not reach DOWN state"
+                }
+                activeTunnel = null
+            } catch (cleanup: Exception) {
+                cleanupFailure = cleanup
+            }
+            if (cleanupFailure != null) {
+                val wrapped = EngineStartException(
+                    message = "WireGuard startup failed and cleanup remains pending",
+                    cleanupSession = session,
+                    cause = failure
+                )
+                wrapped.addSuppressed(cleanupFailure)
+                throw wrapped
+            }
+            throw failure
+        }
+
+        session
     }
 
     private companion object {

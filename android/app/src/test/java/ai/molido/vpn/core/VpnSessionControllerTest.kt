@@ -4,11 +4,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class VpnSessionControllerTest {
-    private class FakeSession(private val stopFailure: Boolean = false) : EngineSession {
+    private class FakeSession(private var failuresRemaining: Int = 0) : EngineSession {
         var stopCalls = 0
         override fun stop() {
             stopCalls += 1
-            if (stopFailure) error("simulated cleanup failure")
+            if (failuresRemaining > 0) {
+                failuresRemaining -= 1
+                error("simulated cleanup failure")
+            }
         }
     }
 
@@ -17,10 +20,8 @@ class VpnSessionControllerTest {
         private val session: EngineSession = FakeSession()
     ) : EngineAdapter {
         var startCalls = 0
-        var lastConfiguration: String? = null
         override fun start(configuration: String): EngineSession {
             startCalls += 1
-            lastConfiguration = configuration
             return session
         }
     }
@@ -55,11 +56,11 @@ class VpnSessionControllerTest {
     }
 
     @Test
-    fun startupFailureReleasesReservationAfterFailClosedCleanup() {
+    fun startupFailureWithCompletedRollbackReleasesReservation() {
         val supervisor = SessionSupervisor()
         val adapter = object : EngineAdapter {
             override val slot = EngineSlot.WIREGUARD
-            override fun start(configuration: String): EngineSession = error("startup failed")
+            override fun start(configuration: String): EngineSession = error("startup failed after rollback")
         }
         val controller = VpnSessionController(supervisor, listOf(adapter))
 
@@ -74,9 +75,32 @@ class VpnSessionControllerTest {
     }
 
     @Test
-    fun stopFailureRetainsFailedOwnerAndBlocksOtherEngines() {
+    fun startupFailureWithPendingCleanupRetainsOwnerForRetry() {
         val supervisor = SessionSupervisor()
-        val failedSession = FakeSession(stopFailure = true)
+        val cleanupSession = FakeSession(failuresRemaining = 1)
+        val adapter = object : EngineAdapter {
+            override val slot = EngineSlot.WIREGUARD
+            override fun start(configuration: String): EngineSession =
+                throw EngineStartException("cleanup pending", cleanupSession, IllegalStateException("startup"))
+        }
+        val controller = VpnSessionController(supervisor, listOf(adapter))
+
+        try {
+            controller.connect(EngineSlot.WIREGUARD, "opaque-config")
+            fail("Expected startup failure")
+        } catch (_: EngineStartException) {
+            // expected
+        }
+        assertEquals(SessionState.FAILED, controller.snapshot().state)
+        assertEquals(EngineSlot.WIREGUARD, supervisor.currentOwner())
+        assertTrue(controller.disconnect())
+        assertEquals(SessionState.IDLE, controller.snapshot().state)
+    }
+
+    @Test
+    fun stopFailureRetainsOwnerAndAllowsCleanupRetry() {
+        val supervisor = SessionSupervisor()
+        val failedSession = FakeSession(failuresRemaining = 1)
         val wireguard = FakeAdapter(EngineSlot.WIREGUARD, failedSession)
         val tor = FakeAdapter(EngineSlot.TOR)
         val controller = VpnSessionController(supervisor, listOf(wireguard, tor))
@@ -92,6 +116,10 @@ class VpnSessionControllerTest {
         assertEquals(EngineSlot.WIREGUARD, supervisor.currentOwner())
         assertFalse(controller.connect(EngineSlot.TOR, "other-config"))
         assertEquals(0, tor.startCalls)
+
+        assertTrue(controller.disconnect())
+        assertEquals(SessionState.IDLE, controller.snapshot().state)
+        assertNull(supervisor.currentOwner())
     }
 
     @Test
