@@ -66,3 +66,17 @@ def test_expired_configuration_is_rejected(tmp_path):
         json={"payload": {"policy": "wifi-only"}, "expires_at": int(time.time()) - 1},
     )
     assert response.status_code == 400
+
+
+def test_readiness_rejects_short_admin_secret(tmp_path):
+    app = create_app(
+        database_path=tmp_path / "short-admin.sqlite3",
+        admin_token="short",
+        signing_key_pem=ec.generate_private_key(ec.SECP256R1()).private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ),
+    )
+    response = TestClient(app).get("/health/ready")
+    assert response.status_code == 503
