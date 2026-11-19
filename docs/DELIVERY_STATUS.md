@@ -64,7 +64,7 @@ No seventh engine is authorized. A slot is not an implementation or a promise of
 | Control Plane & Configuration | Not Implemented | No backend/control-plane implementation |
 | Update & Integrity | Not Implemented | No signed update metadata, verified updater, or rollback implementation |
 
-## Network Intelligence implementation boundary\n\n- `NetworkIntelligenceCore` evaluates only caller-supplied, timestamped local observations.\n- Missing measurements remain null/unknown; stale and future observations are not used.\n- The evaluator performs no network probes, throughput estimates, engine selection, or telemetry transmission.\n- Android platform collection, permission/lifecycle integration, and physical-device validation remain outstanding.\n\n## WireGuard and Android technical boundary
+## Network Intelligence implementation boundary\n\n- `NetworkIntelligenceCore` evaluates only caller-supplied, timestamped local observations.\n- Missing measurements remain null/unknown; stale and future observations are not used.\n- The evaluator performs no network probes, throughput estimates, engine selection, or telemetry transmission.\n- `AndroidNetworkObservationCollector` reads active-network capabilities without probing or telemetry; `ACCESS_NETWORK_STATE` is declared. UI/session integration, callback-driven refresh, and physical-device validation remain outstanding.\n\n## WireGuard and Android technical boundary
 
 - The WireGuard adapter delegates VPN interface creation and packet routing to upstream `GoBackend`.
 - The upstream manifest-merged `GoBackend.VpnService` is the sole intended VPN service/TUN provider. Do not add a second service or create a second TUN.
