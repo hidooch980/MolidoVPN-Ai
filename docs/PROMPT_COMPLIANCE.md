@@ -34,14 +34,14 @@ This audit checks repository evidence against `docs/MASTER_SPEC.md` and the immu
 | Tor | Not Implemented |
 | MASQUE/WARP-compatible | Not Implemented |
 
-No seventh engine is permitted. An inventory entry is not an engine implementation.
+No seventh engine is permitted. An inventory entry is not an engine implementation. Network Intelligence currently has a pure deterministic observation evaluator; it is not yet connected to Android network callbacks.
 
 ### Eight complementary cores
 
 | Core | Status |
 |---|---|
 | Session & TUN Supervisor | Source Implemented; CI Tested |
-| Network Intelligence | Not Implemented |
+| Network Intelligence | Partially Source Implemented |
 | Adaptive Path & Policy | Not Implemented |
 | Security & Privacy | Partially Source Implemented; full threat-model and platform-secure-storage verification outstanding |
 | Resilience & Recovery | Partially Source Implemented; physical network/process recovery unverified |

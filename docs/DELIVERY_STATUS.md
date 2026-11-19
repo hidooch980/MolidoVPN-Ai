@@ -56,7 +56,7 @@ No seventh engine is authorized. A slot is not an implementation or a promise of
 | Complementary core | Status | Evidence / next gate |
 |---|---|---|
 | Session & TUN Supervisor | Source Implemented | Exclusive lifecycle ownership and controller tests |
-| Network Intelligence | Not Implemented | No real network measurement pipeline |
+| Network Intelligence | Partially Source Implemented | Pure deterministic evaluator accepts timestamped local observations, preserves unknown values, and rejects stale/future data; Android ConnectivityManager collector and device validation remain unimplemented |
 | Adaptive Path & Policy | Not Implemented | No validated adaptive selection; no fabricated measurements |
 | Security & Privacy | Partially Source Implemented | Initial privacy boundaries and in-memory profile flow; full threat model/security verification remains |
 | Resilience & Recovery | Partially Source Implemented | Lifecycle cleanup retry behavior exists; device/network recovery is unverified |
@@ -64,7 +64,7 @@ No seventh engine is authorized. A slot is not an implementation or a promise of
 | Control Plane & Configuration | Not Implemented | No backend/control-plane implementation |
 | Update & Integrity | Not Implemented | No signed update metadata, verified updater, or rollback implementation |
 
-## WireGuard and Android technical boundary
+## Network Intelligence implementation boundary\n\n- `NetworkIntelligenceCore` evaluates only caller-supplied, timestamped local observations.\n- Missing measurements remain null/unknown; stale and future observations are not used.\n- The evaluator performs no network probes, throughput estimates, engine selection, or telemetry transmission.\n- Android platform collection, permission/lifecycle integration, and physical-device validation remain outstanding.\n\n## WireGuard and Android technical boundary
 
 - The WireGuard adapter delegates VPN interface creation and packet routing to upstream `GoBackend`.
 - The upstream manifest-merged `GoBackend.VpnService` is the sole intended VPN service/TUN provider. Do not add a second service or create a second TUN.
