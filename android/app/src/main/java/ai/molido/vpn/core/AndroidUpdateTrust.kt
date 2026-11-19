@@ -51,6 +51,10 @@ class AndroidUpdateTrust(
         trustStore.advanceInstalledVersionCode(installedVersion)
     }
 
+    internal fun installedVersionCode(): Long = installedPackageVersionCode()
+
+    internal fun trustedVersionCode(): Long = trustStore.currentInstalledVersionCode()
+
     @Suppress("DEPRECATION")
     private fun installedPackageVersionCode(): Long {
         val packageInfo = appContext.packageManager.getPackageInfo(appContext.packageName, 0)

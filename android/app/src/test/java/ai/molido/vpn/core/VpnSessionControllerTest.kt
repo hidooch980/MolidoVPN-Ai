@@ -138,6 +138,70 @@ class VpnSessionControllerTest {
     }
 
     @Test
+    fun recoveryReleasesOldOwnerOnlyAfterSuccessfulCleanup() {
+        val supervisor = SessionSupervisor()
+        val oldSession = FakeSession()
+        val replacementSession = FakeSession()
+        val adapter = FakeAdapter(EngineSlot.WIREGUARD, oldSession)
+        var network = NetworkAssessment(NetworkAssessmentStatus.VALIDATED)
+        val controller = VpnSessionController(
+            supervisor, listOf(adapter), networkAssessmentProvider = { network }
+        )
+        assertTrue(controller.connect(EngineSlot.WIREGUARD, "initial"))
+        // A failed session may only be prepared for recovery after it is marked FAILED.
+        supervisor.markFailed(EngineSlot.WIREGUARD)
+        val plan = controller.prepareRecovery(0)
+        assertEquals(RecoveryAction.SCHEDULE_RETRY, plan.action)
+        assertEquals(1_000L, plan.delayMillis)
+        assertEquals(SessionState.IDLE, controller.snapshot().state)
+        assertNull(supervisor.currentOwner())
+        assertTrue(controller.connect(EngineSlot.WIREGUARD, "replacement"))
+        assertEquals(2, adapter.startCalls)
+        assertEquals(SessionState.RUNNING, controller.snapshot().state)
+    }
+
+    @Test
+    fun failedRecoveryCleanupRetainsOldOwnerAndBlocksEveryEngine() {
+        val supervisor = SessionSupervisor()
+        val oldSession = FakeSession(failuresRemaining = 1)
+        val wireguard = FakeAdapter(EngineSlot.WIREGUARD, oldSession)
+        val otherEngine = FakeAdapter(EngineSlot.TOR)
+        val controller = VpnSessionController(
+            supervisor, listOf(wireguard, otherEngine),
+            networkAssessmentProvider = { NetworkAssessment(NetworkAssessmentStatus.VALIDATED) }
+        )
+        assertTrue(controller.connect(EngineSlot.WIREGUARD, "initial"))
+        supervisor.markFailed(EngineSlot.WIREGUARD)
+        val first = controller.prepareRecovery(0)
+        assertEquals(RecoveryAction.NONE, first.action)
+        assertEquals(EngineSlot.WIREGUARD, supervisor.currentOwner())
+        assertFalse(controller.connect(EngineSlot.TOR, "must-not-overlap"))
+        assertEquals(0, otherEngine.startCalls)
+        val second = controller.prepareRecovery(0)
+        assertEquals(RecoveryAction.SCHEDULE_RETRY, second.action)
+        assertNull(supervisor.currentOwner())
+    }
+
+    @Test
+    fun recoveryWaitsForValidatedNetworkAndDoesNotConsumeAttempt() {
+        val supervisor = SessionSupervisor()
+        val adapter = FakeAdapter(EngineSlot.WIREGUARD)
+        var network = NetworkAssessment(NetworkAssessmentStatus.NOT_VALIDATED)
+        val controller = VpnSessionController(
+            supervisor, listOf(adapter), networkAssessmentProvider = { network }
+        )
+        assertTrue(controller.connect(EngineSlot.WIREGUARD, "initial"))
+        supervisor.markFailed(EngineSlot.WIREGUARD)
+        val offline = controller.prepareRecovery(2)
+        assertEquals(RecoveryAction.WAIT_FOR_NETWORK, offline.action)
+        assertEquals(2, offline.attempt)
+        assertEquals(SessionState.IDLE, controller.snapshot().state)
+        network = NetworkAssessment(NetworkAssessmentStatus.VALIDATED)
+        assertTrue(controller.connect(EngineSlot.WIREGUARD, "after-network-return"))
+        assertEquals(2, adapter.startCalls)
+    }
+
+    @Test
     fun missingAdapterCannotReserveSession() {
         val supervisor = SessionSupervisor()
         val controller = VpnSessionController(supervisor, emptyList())

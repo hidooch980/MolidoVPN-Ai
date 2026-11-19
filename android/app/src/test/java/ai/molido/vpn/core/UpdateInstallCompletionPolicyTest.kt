@@ -5,6 +5,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UpdateInstallCompletionPolicyTest {
+    @Test fun duplicateAndConcurrentUpdateAttemptsAreRejected() {
+        assertEquals(UpdateInstallAdmission.ALREADY_PENDING,
+            UpdateInstallAdmissionPolicy.evaluate(true, 9, 8, 8))
+        assertEquals(UpdateInstallAdmission.NOT_NEWER,
+            UpdateInstallAdmissionPolicy.evaluate(false, 8, 8, 7))
+        assertEquals(UpdateInstallAdmission.NOT_NEWER,
+            UpdateInstallAdmissionPolicy.evaluate(false, 7, 8, 8))
+        assertEquals(UpdateInstallAdmission.NOT_NEWER,
+            UpdateInstallAdmissionPolicy.evaluate(false, 0, 0, 0))
+        assertEquals(UpdateInstallAdmission.ACCEPT,
+            UpdateInstallAdmissionPolicy.evaluate(false, 9, 8, 8))
+    }
+
     @Test fun onlyMatchingSuccessfulInstallAdvancesCounter() {
         assertTrue(UpdateInstallCompletionPolicy.shouldRecordInstalledVersion(
             InstallCallbackPhase.SUCCEEDED, 8, 8, 7

@@ -36,8 +36,18 @@ class AndroidUpdateInstaller(
             "Update rejected: ${verification.status}"
         }
         verifyApkIdentityAndVersion(manifest.versionCode, artifact)
-        check(preferences.getInt(KEY_PENDING_SESSION, NO_SESSION) == NO_SESSION) {
-            "Another update installation is already pending"
+        val admission = UpdateInstallAdmissionPolicy.evaluate(
+            hasPendingInstall = preferences.getInt(KEY_PENDING_SESSION, NO_SESSION) != NO_SESSION,
+            candidateVersionCode = manifest.versionCode,
+            installedVersionCode = updateTrust.installedVersionCode(),
+            trustedVersionCode = updateTrust.trustedVersionCode()
+        )
+        require(admission == UpdateInstallAdmission.ACCEPT) {
+            when (admission) {
+                UpdateInstallAdmission.ALREADY_PENDING -> "Another update installation is already pending"
+                UpdateInstallAdmission.NOT_NEWER -> "Update is duplicate or older than the installed/trusted version"
+                UpdateInstallAdmission.ACCEPT -> "Update accepted"
+            }
         }
 
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
@@ -101,8 +111,14 @@ class AndroidUpdateInstaller(
             }
             PackageInstaller.STATUS_SUCCESS -> {
                 val expected = preferences.getLong(KEY_PENDING_VERSION, 0L)
-                updateTrust.recordSuccessfulInstall(expected)
-                clearPending(sessionId, "INSTALL_SUCCEEDED")
+                try {
+                    updateTrust.recordSuccessfulInstall(expected)
+                    clearPending(sessionId, "INSTALL_SUCCEEDED")
+                } catch (_: Exception) {
+                    // The APK is already installed, so its PackageManager version remains
+                    // a rollback floor even if the encrypted counter cannot be advanced.
+                    clearPending(sessionId, "INSTALL_SUCCESS_TRUST_UPDATE_FAILED")
+                }
             }
             else -> clearPending(sessionId, "INSTALL_FAILED")
         }

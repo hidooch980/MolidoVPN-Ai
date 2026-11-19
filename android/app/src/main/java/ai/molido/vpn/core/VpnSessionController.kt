@@ -105,6 +105,54 @@ class VpnSessionController(
         return ResilienceRecoveryCore.plan(supervisor.snapshot().state, network, attempt, maxAttempts)
     }
 
+    /**
+     * Cleans a FAILED engine session before a caller schedules a replacement.
+     * The returned plan is computed from the pre-cleanup FAILED state. Ownership is
+     * released only after stop() succeeds; on failure the old owner remains exclusive.
+     * A caller must honor delayMillis and call connect() only after fresh network policy
+     * permits it. This method deliberately does not create a background scheduler.
+     */
+    @Synchronized
+    fun prepareRecovery(
+        attempt: Int,
+        maxAttempts: Int = ResilienceRecoveryCore.DEFAULT_MAX_ATTEMPTS
+    ): RecoveryPlan {
+        val owner = activeOwner ?: return RecoveryPlan(
+            RecoveryAction.NONE, attempt = attempt,
+            reason = "No failed engine session is retained"
+        )
+        if (activeSession == null || supervisor.snapshot().state != SessionState.FAILED) {
+            return RecoveryPlan(
+                RecoveryAction.NONE, attempt = attempt,
+                reason = "Only a retained FAILED session can be prepared for recovery"
+            )
+        }
+        val network = networkAssessmentProvider?.invoke()
+            ?: NetworkAssessment(NetworkAssessmentStatus.UNKNOWN)
+        val plan = ResilienceRecoveryCore.plan(SessionState.FAILED, network, attempt, maxAttempts)
+        if (!supervisor.beginStopping(owner)) {
+            return RecoveryPlan(
+                RecoveryAction.NONE, attempt = attempt,
+                reason = "Session supervisor refused cleanup transition"
+            )
+        }
+        try {
+            activeSession?.stop()
+        } catch (failure: Throwable) {
+            supervisor.markFailed(owner)
+            record("RECOVERY_CLEANUP_FAILED", "Previous engine still owns TUN resources")
+            return RecoveryPlan(
+                RecoveryAction.NONE, attempt = attempt,
+                reason = "Previous session cleanup failed; ownership retained for retry"
+            )
+        }
+        activeSession = null
+        activeOwner = null
+        check(supervisor.release(owner)) { "Session ownership could not be released after recovery cleanup" }
+        record("RECOVERY_CLEANUP_COMPLETE", "Previous engine released ownership before retry")
+        return plan
+    }
+
     private fun record(code: String, detail: String) {
         diagnostics?.record(code, detail, nowEpochMillis())
     }
