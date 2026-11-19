@@ -36,7 +36,11 @@ class VpnSessionControllerTest {
             override fun setFailureListener(listener: (() -> Unit)?) { failureListener = listener }
             override fun start(configuration: String): EngineSession = session
         }
-        val controller = VpnSessionController(supervisor, listOf(adapter))
+        val controller = VpnSessionController(
+            supervisor,
+            listOf(adapter),
+            networkAssessmentProvider = { NetworkAssessment(NetworkAssessmentStatus.VALIDATED) }
+        )
         assertTrue(controller.connect(EngineSlot.WIREGUARD, "in-memory-profile"))
         assertEquals(SessionState.RUNNING, controller.snapshot().state)
         failureListener?.invoke()
@@ -58,7 +62,11 @@ class VpnSessionControllerTest {
                 return FakeSession()
             }
         }
-        val controller = VpnSessionController(supervisor, listOf(adapter))
+        val controller = VpnSessionController(
+            supervisor,
+            listOf(adapter),
+            networkAssessmentProvider = { NetworkAssessment(NetworkAssessmentStatus.VALIDATED) }
+        )
         assertFalse(controller.connect(EngineSlot.WIREGUARD, "in-memory-profile"))
         assertEquals(SessionState.FAILED, controller.snapshot().state)
         assertEquals(EngineSlot.WIREGUARD, supervisor.currentOwner())
