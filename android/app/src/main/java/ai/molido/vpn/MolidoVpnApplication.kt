@@ -3,6 +3,10 @@ package ai.molido.vpn
 import android.app.Application
 import android.net.ConnectivityManager
 import ai.molido.vpn.core.AndroidNetworkObservationMonitor
+import ai.molido.vpn.core.AndroidSecureTrustStore
+import ai.molido.vpn.core.AndroidUpdateTrust
+import ai.molido.vpn.core.ControlPlaneClient
+import ai.molido.vpn.core.ControlPlaneFetchResult
 import ai.molido.vpn.core.DiagnosticsObservabilityCore
 import ai.molido.vpn.core.NetworkAssessment
 import ai.molido.vpn.core.NetworkIntelligenceCore
@@ -26,6 +30,13 @@ class MolidoVpnApplication : Application() {
     private val observation = AtomicReference<NetworkObservation?>(null)
     private val selectedNetworkPolicy = AtomicReference(NetworkPolicy.ANY_VALIDATED)
     val diagnostics = DiagnosticsObservabilityCore(enabled = false)
+    val trustStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { AndroidSecureTrustStore(this) }
+    val controlPlaneClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { ControlPlaneClient(trustStore) }
+    val updateTrust by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { AndroidUpdateTrust(trustStore) }
+
+    /** Caller supplies operator-provisioned HTTPS endpoint and ephemeral device token. */
+    fun fetchRemoteConfiguration(baseUrl: String, deviceToken: String): ControlPlaneFetchResult =
+        controlPlaneClient.fetchAndVerify(baseUrl, deviceToken, System.currentTimeMillis() / 1000L)
     @Volatile var onNetworkAssessmentChanged: (() -> Unit)? = null
 
     fun latestNetworkAssessment(): NetworkAssessment =
