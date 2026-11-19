@@ -2,7 +2,7 @@
 
 Last updated: 2026-11-19
 
-Reviewed source baseline: `5bf794d45db5ca527a42a5daf588c1a87f711136`.
+Reviewed source baseline: `2fd6979f3430c20d7332d2b332f4a1d6d5b14221`.
 This document distinguishes repository/CI evidence from Android-device and production evidence. A green CI run is not proof of a working VPN connection.
 
 ## Current delivery decision
@@ -21,17 +21,17 @@ This document distinguishes repository/CI evidence from Android-device and produ
 | Central engine orchestration | Source Implemented | `VpnSessionController.kt`; one app-level adapter invocation path |
 | WireGuard upstream Android dependency | Source Implemented | `com.wireguard.android:tunnel:1.0.20260102`; Apache-2.0 |
 | WireGuard adapter | Source Implemented | In-memory config parsing and upstream `GoBackend` integration |
-| Controller/lifecycle unit tests | CI Tested | Latest CI run #40 passed unit tests on the exact commit listed below |
-| Android lint | CI Tested | Latest CI run #40 passed `:android:app:lintDebug` |
-| Release-variant assembly | CI Built | Latest CI run #40 passed `:android:app:assembleRelease`; CI-only output, not signed owner release or distribution |
-| Latest CI run | CI Tested | Run #40, ID `44465235475`, commit `5bf794d45db5ca527a42a5daf588c1a87f711136`; success |
+| Controller/lifecycle unit tests | CI Tested | CI run #41 passed unit tests on commit `2fd6979f3430c20d7332d2b332f4a1d6d5b14221` |
+| Android lint | CI Tested | CI run #41 passed `:android:app:lintDebug` |
+| Release-variant assembly | CI Built | CI run #41 passed `:android:app:assembleRelease`; CI-only output, not signed owner release or distribution |
+| Latest CI run | CI Tested | Run #41, ID `44469098367`, commit `2fd6979f3430c20d7332d2b332f4a1d6d5b14221`; all jobs successful |
 | CI run #40 artifacts | Not Published | No APK distribution is claimed |
 | Physical Android validation | Not Implemented | No device test evidence |
 | Self-hosted backend/server | Server Deployment Required | No VPS/server has been provisioned |
 | Stable signed APK | Blocked | Permanent signing identity not confirmed by owner |
 | Production verification | Blocked | Requires device, real endpoint, and complete release gates |
 
-CI run: https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44465235475
+CI run: https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44469098367
 
 ## Six-engine implementation matrix
 
