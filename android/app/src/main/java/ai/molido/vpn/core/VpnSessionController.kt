@@ -93,6 +93,14 @@ class VpnSessionController(
 
     @Synchronized
     fun recoveryPlan(attempt: Int, maxAttempts: Int = ResilienceRecoveryCore.DEFAULT_MAX_ATTEMPTS): RecoveryPlan {
+        // Never schedule a replacement while the previous engine still owns resources.
+        if (activeSession != null) {
+            return RecoveryPlan(
+                RecoveryAction.NONE,
+                attempt = attempt,
+                reason = "Previous session cleanup must complete before recovery"
+            )
+        }
         val network = networkAssessmentProvider?.invoke() ?: NetworkAssessment(NetworkAssessmentStatus.UNKNOWN)
         return ResilienceRecoveryCore.plan(supervisor.snapshot().state, network, attempt, maxAttempts)
     }
