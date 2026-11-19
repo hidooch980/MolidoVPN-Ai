@@ -17,6 +17,19 @@ class VpnSessionController(
     private var lastPathDecision: AdaptivePathDecision? = null
     private val pendingEngineFailures = mutableSetOf<EngineSlot>()
 
+    /** UI observers receive lifecycle snapshots; callbacks must not block engine work. */
+    @Volatile
+    var onSessionStateChanged: ((SessionSnapshot) -> Unit)? = null
+        set(value) {
+            field = value
+            value?.invoke(snapshot())
+        }
+
+    private fun publishState() {
+        val current = supervisor.snapshot()
+        onSessionStateChanged?.invoke(current)
+    }
+
     init {
         adaptersBySlot.values.filterIsInstance<EngineFailureAwareAdapter>().forEach { aware ->
             aware.setFailureListener {
@@ -27,17 +40,21 @@ class VpnSessionController(
 
     @Synchronized
     private fun reportEngineFailure(adapter: EngineFailureAwareAdapter) {
-        val engine = adaptersBySlot.values
-            .filterIsInstance<EngineFailureAwareAdapter>()
-            .firstOrNull { it === adapter }
-            ?: return
+        val slot = adaptersBySlot.entries.firstOrNull { it.value === adapter }?.key ?: return
+        val snapshot = supervisor.snapshot()
+        // A callback may arrive synchronously from start() before its session handle
+        // is returned. Buffer it while this engine owns the RESERVED slot.
+        if (snapshot.owner == slot && snapshot.state == SessionState.RESERVED && activeSession == null) {
+            pendingEngineFailures.add(slot)
+            return
+        }
         val owner = activeOwner ?: return
-        val slot = (engine as? EngineAdapter)?.slot ?: return
         if (owner != slot || activeSession == null) return
-        // Ignore intentional shutdown callbacks and duplicate DOWN notifications.
-        if (supervisor.snapshot().state != SessionState.RUNNING) return
+        // Ignore intentional shutdown callbacks and duplicate/late DOWN notifications.
+        if (snapshot.state != SessionState.RUNNING) return
         if (supervisor.markFailed(owner)) {
             record("ENGINE_SESSION_FAILED", "Engine reported unexpected shutdown; TUN ownership retained")
+            publishState()
         }
     }
 
@@ -58,6 +75,7 @@ class VpnSessionController(
             record("SESSION_CLAIM_REJECTED", "Exclusive session ownership unavailable")
             return false
         }
+        publishState()
         val session = try {
             adapter.start(configuration)
         } catch (failure: Throwable) {
@@ -72,6 +90,7 @@ class VpnSessionController(
                 supervisor.release(slot)
             }
             record("ENGINE_START_FAILED", "Engine startup failed; sensitive details omitted")
+            publishState()
             throw failure
         }
         if (!supervisor.markRunning(slot)) {
@@ -85,10 +104,12 @@ class VpnSessionController(
                 activeOwner = slot
                 supervisor.markFailed(slot)
                 record("START_ROLLBACK_PENDING", "Startup rollback requires cleanup retry")
+                publishState()
                 throw failure
             }
             check(supervisor.release(slot)) { "Session ownership could not be released after startup rollback" }
             record("START_ROLLBACK_COMPLETE", "Session startup rolled back")
+            publishState()
             return false
         }
         activeSession = session
@@ -96,9 +117,11 @@ class VpnSessionController(
         if (pendingEngineFailures.remove(slot)) {
             supervisor.markFailed(slot)
             record("ENGINE_SESSION_FAILED", "Engine failed during startup completion; TUN ownership retained")
+            publishState()
             return false
         }
         record("SESSION_STARTED", "VPN engine session entered RUNNING state")
+        publishState()
         return true
     }
 
@@ -111,12 +134,14 @@ class VpnSessionController(
         } catch (failure: Throwable) {
             supervisor.markFailed(owner)
             record("SESSION_STOP_FAILED", "Cleanup failed; ownership retained for retry")
+            publishState()
             throw failure
         }
         activeSession = null
         activeOwner = null
         check(supervisor.release(owner)) { "Session ownership could not be released after cleanup" }
         record("SESSION_STOPPED", "VPN engine session stopped and ownership released")
+        publishState()
         return true
     }
 
@@ -129,6 +154,7 @@ class VpnSessionController(
         val owner = activeOwner ?: return false
         if (activeSession == null || !supervisor.markFailed(owner)) return false
         record("ENGINE_SESSION_FAILED", "Active engine reported failure; exclusive ownership retained")
+        publishState()
         return true
     }
 
@@ -182,6 +208,7 @@ class VpnSessionController(
         } catch (failure: Throwable) {
             supervisor.markFailed(owner)
             record("RECOVERY_CLEANUP_FAILED", "Previous engine still owns TUN resources")
+            publishState()
             return RecoveryPlan(
                 RecoveryAction.NONE, attempt = attempt,
                 reason = "Previous session cleanup failed; ownership retained for retry"
@@ -191,6 +218,7 @@ class VpnSessionController(
         activeOwner = null
         check(supervisor.release(owner)) { "Session ownership could not be released after recovery cleanup" }
         record("RECOVERY_CLEANUP_COMPLETE", "Previous engine released ownership before retry")
+        publishState()
         return plan
     }
 
