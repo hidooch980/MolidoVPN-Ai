@@ -117,7 +117,7 @@ class MainActivity : ComponentActivity() {
             setOnClickListener {
                 val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
-                    type = "text/*"
+                    type = "*/*"\n                    putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/plain", "application/octet-stream", "application/x-wireguard-config"))
                 }
                 profilePicker.launch(intent)
             }
@@ -171,7 +171,7 @@ class MainActivity : ComponentActivity() {
                     val detail = if (started) {
                         "WireGuard backend is active. Peer handshake, internet reachability, DNS and leak protection still require real-device verification."
                     } else {
-                        "The session could not be started. The exclusive session controller rejected the request."
+                        molidoApp.vpnSessions.latestPathDecision()?.reason\n                            ?: "The session could not be started. Check the selected engine and current session state."
                     }
                     renderState(detail)
                 }
