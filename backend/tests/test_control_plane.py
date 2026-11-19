@@ -162,3 +162,24 @@ def test_database_symlink_is_rejected(tmp_path):
     response = TestClient(app).get("/health/ready")
     assert response.status_code == 503
     assert target.read_bytes() == b"do-not-touch"
+
+
+def test_database_directory_must_have_exact_owner_mode(tmp_path):
+    import os
+    if os.name != "posix":
+        return
+    data_dir = tmp_path / "read-only-data"
+    data_dir.mkdir(mode=0o700)
+    data_dir.chmod(0o500)
+    app = create_app(
+        database_path=data_dir / "control.sqlite3",
+        admin_token="molido-test-admin-token-32chars-minimum",
+        signing_key_pem=ec.generate_private_key(ec.SECP256R1()).private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ),
+    )
+    response = TestClient(app).get("/health/ready")
+    assert response.status_code == 503
+    assert "mode 0700" in response.json()["detail"]
