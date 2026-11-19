@@ -18,6 +18,14 @@ class ResilienceRecoveryCoreTest {
         assertEquals(60_000L, capped.delayMillis)
         assertEquals(21, capped.attempt)
     }
+
+    @Test fun activeOrTransitionalSessionsDoNotScheduleRetries() {
+        for (state in listOf(SessionState.IDLE, SessionState.RESERVED, SessionState.RUNNING, SessionState.STOPPING)) {
+            val result = ResilienceRecoveryCore.plan(state, online, 0)
+            assertEquals(state.name, RecoveryAction.NONE, result.action)
+            assertEquals(state.name, 0, result.attempt)
+        }
+    }
     @Test fun retryLimitStops() {
         assertEquals(RecoveryAction.STOP_RETRIES, ResilienceRecoveryCore.plan(SessionState.FAILED, online, 5).action)
     }
