@@ -1,8 +1,8 @@
 package ai.molido.vpn.core
 
+import java.security.MessageDigest
 import java.security.PublicKey
 import java.security.Signature
-import java.security.MessageDigest
 
 data class SignedUpdateManifest(
     val versionCode: Long,
@@ -13,10 +13,13 @@ data class SignedUpdateManifest(
 )
 
 enum class UpdateVerificationStatus { VERIFIED, EXPIRED, ROLLBACK, INVALID_DIGEST, INVALID_SIGNATURE, INVALID_METADATA }
-
 data class UpdateVerificationResult(val status: UpdateVerificationStatus, val reason: String)
 
-/** Verifies signed metadata and artifact digest; it does not download or install APKs. */
+/**
+ * Verifies a canonical signed manifest and its APK digest. The trusted public key
+ * must be provisioned by the release owner; this class never generates or embeds keys.
+ * Download, installation, persistent anti-rollback storage and recovery are separate gates.
+ */
 class UpdateIntegrityCore(
     private val trustedPublicKey: PublicKey,
     private val signatureAlgorithm: String = "SHA256withECDSA"
@@ -33,27 +36,41 @@ class UpdateIntegrityCore(
             manifest.signedPayload.isEmpty() || manifest.signature.isEmpty()
         ) return UpdateVerificationResult(UpdateVerificationStatus.INVALID_METADATA, "Malformed update metadata")
 
-        if (manifest.expiresAtEpochSeconds < nowEpochSeconds) {
+        if (manifest.expiresAtEpochSeconds <= nowEpochSeconds) {
             return UpdateVerificationResult(UpdateVerificationStatus.EXPIRED, "Signed update metadata has expired")
         }
         if (manifest.versionCode <= installedVersionCode) {
             return UpdateVerificationResult(UpdateVerificationStatus.ROLLBACK, "Update version is not newer than installed version")
         }
+
+        val canonical = canonicalPayload(
+            manifest.versionCode, manifest.expiresAtEpochSeconds, manifest.artifactSha256Hex.lowercase()
+        )
+        if (!MessageDigest.isEqual(canonical, manifest.signedPayload)) {
+            return UpdateVerificationResult(UpdateVerificationStatus.INVALID_METADATA, "Signed payload does not match manifest fields")
+        }
+
         val digest = MessageDigest.getInstance("SHA-256").digest(artifact)
             .joinToString("") { "%02x".format(it) }
         if (!digest.equals(manifest.artifactSha256Hex, ignoreCase = true)) {
             return UpdateVerificationResult(UpdateVerificationStatus.INVALID_DIGEST, "Artifact digest does not match signed metadata")
         }
+
         val valid = try {
             Signature.getInstance(signatureAlgorithm).run {
                 initVerify(trustedPublicKey)
-                update(manifest.signedPayload)
+                update(canonical)
                 verify(manifest.signature)
             }
-        } catch (_: Exception) {
-            false
-        }
+        } catch (_: Exception) { false }
+
         return if (valid) UpdateVerificationResult(UpdateVerificationStatus.VERIFIED, "Signature and artifact digest verified")
         else UpdateVerificationResult(UpdateVerificationStatus.INVALID_SIGNATURE, "Update metadata signature is invalid")
+    }
+
+    companion object {
+        /** Stable UTF-8 wire format: versionCode, expiry epoch, lowercase SHA-256, each newline-delimited. */
+        fun canonicalPayload(versionCode: Long, expiresAtEpochSeconds: Long, artifactSha256Hex: String): ByteArray =
+            "$versionCode\n$expiresAtEpochSeconds\n${artifactSha256Hex.lowercase()}\n".toByteArray(Charsets.UTF_8)
     }
 }
