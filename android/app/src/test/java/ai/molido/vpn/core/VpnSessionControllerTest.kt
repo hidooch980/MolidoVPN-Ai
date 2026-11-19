@@ -130,4 +130,34 @@ class VpnSessionControllerTest {
         assertFalse(controller.connect(EngineSlot.WIREGUARD, "opaque-config"))
         assertEquals(SessionState.IDLE, supervisor.snapshot().state)
     }
+
+    @Test
+    fun duplicateAdapterSlotsAreRejectedAtConstruction() {
+        val supervisor = SessionSupervisor()
+        val first = FakeAdapter(EngineSlot.WIREGUARD)
+        val duplicate = FakeAdapter(EngineSlot.WIREGUARD)
+
+        try {
+            VpnSessionController(supervisor, listOf(first, duplicate))
+            fail("Expected duplicate engine slot rejection")
+        } catch (_: IllegalArgumentException) {
+            // Duplicate registrations must fail closed before any session can start.
+        }
+
+        assertEquals(SessionState.IDLE, supervisor.snapshot().state)
+        assertNull(supervisor.currentOwner())
+        assertEquals(0, first.startCalls)
+        assertEquals(0, duplicate.startCalls)
+    }
+
+    @Test
+    fun disconnectOnIdleIsIdempotent() {
+        val supervisor = SessionSupervisor()
+        val controller = VpnSessionController(supervisor, emptyList())
+
+        assertTrue(controller.disconnect())
+        assertTrue(controller.disconnect())
+        assertEquals(SessionState.IDLE, controller.snapshot().state)
+        assertNull(supervisor.currentOwner())
+    }
 }
