@@ -183,3 +183,25 @@ def test_database_directory_must_have_exact_owner_mode(tmp_path):
     response = TestClient(app).get("/health/ready")
     assert response.status_code == 503
     assert "mode 0700" in response.json()["detail"]
+
+
+def test_configuration_revision_increments_for_each_publish(tmp_path):
+    client, _ = setup_client(tmp_path)
+    admin = {"Authorization": "Bearer molido-test-admin-token-32chars-minimum"}
+    credentials = client.post("/v1/devices/enroll", headers=admin, json={"label": "revision-test"}).json()
+    url = f"/v1/devices/{credentials['device_id']}/configuration"
+    expires = int(time.time()) + 600
+
+    first = client.put(url, headers=admin, json={"payload": {"policy": "any"}, "expires_at": expires})
+    second = client.put(url, headers=admin, json={"payload": {"policy": "wifi-only"}, "expires_at": expires})
+
+    assert first.status_code == 200
+    assert first.json()["revision"] == 1
+    assert second.status_code == 200
+    assert second.json()["revision"] == 2
+    fetched = client.get(
+        "/v1/configuration",
+        headers={"Authorization": f"Bearer {credentials['device_token']}"},
+    )
+    assert fetched.status_code == 200
+    assert fetched.json()["revision"] == 2
