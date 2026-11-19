@@ -3,7 +3,7 @@
 Audit date: 2026-11-19
 Audited repository: `hidooch980/MolidoVPN-Ai`
 Audited branch: `development/molido-vpn-ai-from-scratch`
-Source baseline: `51efbf4e2920a41c96419861183e1a7edaef9dd5`
+Source baseline: `60d3bfb9548767713dcc4009232d98b21c6f61da`
 
 This audit checks repository evidence against `docs/MASTER_SPEC.md` and the immutable owner constraints. It does not infer runtime behavior from source presence or CI success.
 
@@ -11,10 +11,10 @@ This audit checks repository evidence against `docs/MASTER_SPEC.md` and the immu
 
 | Rule | Evidence | Result |
 |---|---|---|
-| Exactly six approved engine slots | `ArchitectureInventory.kt`; exact-set unit test added in this change | CI validation pending for this change |
+| Exactly six approved engine slots | `ArchitectureInventory.kt`; exact-set unit test added in this change | CI Tested in CI #46 on commit `60d3bfb9548767713dcc4009232d98b21c6f61da` |
 | Exactly eight approved complementary cores | `ArchitectureInventory.kt`; exact-set unit test added in this change | CI validation pending for this change |
 | One TUN owner | WireGuard upstream `GoBackend.VpnService`; no app-declared second VPN service | Source reviewed; runtime merge/device validation pending |
-| Single app-level engine lifecycle entry point | `VpnSessionController` | Source Implemented; unit tests passed in CI #45 |
+| Single app-level engine lifecycle entry point | `VpnSessionController` | Source Implemented; unit tests passed in CI #46 |
 | WireGuard first | Only WireGuard adapter registered in `MolidoVpnApplication` | Source Implemented; device/server validation blocked |
 | No fake endpoints or measurements | No production endpoint or fabricated network measurements in current source | Source review only |
 | No external critical SaaS dependency | Current Android client uses local app code and declared Android/WireGuard libraries | Source review only |
@@ -62,15 +62,14 @@ No seventh engine is permitted. An inventory entry is not an engine implementati
 - CI #43: success on `627fa1d21698caf17de9c8fa320908ecda67f75c`.
 - CI #44: success on `3b8f537ea774e38726e0d92b511e125fec0409c6`.
 - CI #45: success on `51efbf4e2920a41c96419861183e1a7edaef9dd5`.
-- The exact-set prompt guard tests in this audit change require a subsequent CI run before they can be labelled CI Tested.
+- CI #46: success on `60d3bfb9548767713dcc4009232d98b21c6f61da`; exact-set tests, unit tests, Android lint, and release-variant assembly all passed.
 
 ## Next safe execution order
 
-1. Complete CI for the exact-set guard tests.
-2. Implement and test missing platform cores in bounded, independently reviewable increments.
-3. Prepare self-hosted control-plane/server source without assuming or provisioning infrastructure.
-4. Continue WireGuard first-run only when an authorized profile, endpoint, and physical Android test environment are available.
-5. Integrate each remaining engine only after upstream/license/security review and proof it respects the single-TUN boundary.
-6. Keep Stable Production blocked until device, server, signing, security, integrity, and rollback evidence is complete.
+1. Implement and test missing platform cores in bounded, independently reviewable increments.
+2. Prepare self-hosted control-plane/server source without assuming or provisioning infrastructure.
+3. Continue WireGuard first-run only when an authorized profile, endpoint, and physical Android test environment are available.
+4. Integrate each remaining engine only after upstream/license/security review and proof it respects the single-TUN boundary.
+5. Keep Stable Production blocked until device, server, signing, security, integrity, and rollback evidence is complete.
 
 No endpoint, server, country, IP, handshake, traffic, latency, throughput, device test, secret, or signing identity is invented by this audit.

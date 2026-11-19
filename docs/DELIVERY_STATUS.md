@@ -2,7 +2,7 @@
 
 Last updated: 2026-11-19
 
-Reviewed source baseline: `51efbf4e2920a41c96419861183e1a7edaef9dd5`.
+Reviewed source baseline: `60d3bfb9548767713dcc4009232d98b21c6f61da`.
 This document distinguishes repository/CI evidence from Android-device and production evidence. A green CI run is not proof of a working VPN connection.
 
 ## Current delivery decision
@@ -21,10 +21,10 @@ This document distinguishes repository/CI evidence from Android-device and produ
 | Central engine orchestration | Source Implemented | `VpnSessionController.kt`; one app-level adapter invocation path |
 | WireGuard upstream Android dependency | Source Implemented | `com.wireguard.android:tunnel:1.0.20260102`; Apache-2.0 |
 | WireGuard adapter | Source Implemented | In-memory config parsing and upstream `GoBackend` integration |
-| Controller/lifecycle unit tests | CI Tested | CI run #43 passed unit tests on commit `627fa1d21698caf17de9c8fa320908ecda67f75c` |
-| Android lint | CI Tested | CI run #43 passed Android lint |
-| Release-variant assembly | CI Built | CI run #43 passed release-variant assembly; CI-only output, not signed owner release or distribution |
-| Latest completed CI run | CI Tested | Run #45, ID `44473390219`, commit `51efbf4e2920a41c96419861183e1a7edaef9dd5`; unit tests, Android lint, and release-variant assembly all passed |
+| Controller/lifecycle unit tests | CI Tested | CI run #46 passed unit tests on commit `60d3bfb9548767713dcc4009232d98b21c6f61da` |
+| Android lint | CI Tested | CI run #46 passed Android lint |
+| Release-variant assembly | CI Built | CI run #46 passed release-variant assembly; CI-only output, not signed owner release or distribution |
+| Latest completed CI run | CI Tested | Run #46, ID `44473841493`, commit `60d3bfb9548767713dcc4009232d98b21c6f61da`; exact-six/exact-eight inventory guard tests, unit tests, Android lint, and release-variant assembly all passed |
 | Physical Android validation | Not Implemented | No device test evidence |
 | Self-hosted backend/server | Server Deployment Required | No VPS/server has been provisioned |
 | Stable signed APK | Blocked | Permanent signing identity not confirmed by owner |
@@ -34,7 +34,7 @@ CI run #43 (completed successfully on parent commit): https://github.com/hidooch
 
 CI run #44 (completed successfully): https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44473125681
 
-Latest completed CI run #45: https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44473390219
+Latest completed CI run #46: https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44473841493
 
 Master prompt compliance audit: `docs/PROMPT_COMPLIANCE.md`.
 
@@ -58,8 +58,8 @@ No seventh engine is authorized. A slot is not an implementation or a promise of
 | Session & TUN Supervisor | Source Implemented | Exclusive lifecycle ownership and controller tests |
 | Network Intelligence | Not Implemented | No real network measurement pipeline |
 | Adaptive Path & Policy | Not Implemented | No validated adaptive selection; no fabricated measurements |
-| Security & Privacy | Source Implemented | Initial privacy boundaries and in-memory profile flow; full threat model/security verification remains |
-| Resilience & Recovery | Source Implemented | Lifecycle cleanup retry behavior exists; device/network recovery is unverified |
+| Security & Privacy | Partially Source Implemented | Initial privacy boundaries and in-memory profile flow; full threat model/security verification remains |
+| Resilience & Recovery | Partially Source Implemented | Lifecycle cleanup retry behavior exists; device/network recovery is unverified |
 | Diagnostics & Observability | Not Implemented | No production diagnostics pipeline or telemetry service |
 | Control Plane & Configuration | Not Implemented | No backend/control-plane implementation |
 | Update & Integrity | Not Implemented | No signed update metadata, verified updater, or rollback implementation |
