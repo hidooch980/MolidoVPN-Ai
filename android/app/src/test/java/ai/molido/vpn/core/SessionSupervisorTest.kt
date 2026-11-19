@@ -14,6 +14,26 @@ class SessionSupervisorTest {
     }
 
     @Test
+    fun sameEngineCannotClaimAnExistingReservationAgain() {
+        val supervisor = SessionSupervisor()
+        assertTrue(supervisor.claim(EngineSlot.WIREGUARD))
+        assertFalse(supervisor.claim(EngineSlot.WIREGUARD))
+        assertEquals(SessionState.RESERVED, supervisor.snapshot().state)
+        assertEquals(EngineSlot.WIREGUARD, supervisor.currentOwner())
+        assertEquals(1L, supervisor.snapshot().generation)
+    }
+
+    @Test
+    fun sameEngineCannotClaimAnAlreadyRunningSessionAgain() {
+        val supervisor = SessionSupervisor()
+        assertTrue(supervisor.claim(EngineSlot.WIREGUARD))
+        assertTrue(supervisor.markRunning(EngineSlot.WIREGUARD))
+        assertFalse(supervisor.claim(EngineSlot.WIREGUARD))
+        assertEquals(SessionState.RUNNING, supervisor.snapshot().state)
+        assertEquals(1L, supervisor.snapshot().generation)
+    }
+
+    @Test
     fun ownerCanReleaseReservationAndNextEngineCanClaim() {
         val supervisor = SessionSupervisor()
         assertTrue(supervisor.claim(EngineSlot.WIREGUARD))

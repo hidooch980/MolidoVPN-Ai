@@ -28,10 +28,9 @@ class SessionSupervisor {
     /** Reserves the single session slot for an engine. */
     @Synchronized
     fun claim(engine: EngineSlot): Boolean {
-        if (state != SessionState.IDLE) {
-            return activeEngine == engine &&
-                (state == SessionState.RESERVED || state == SessionState.RUNNING)
-        }
+        // A claim is a one-time reservation, never a re-entrant permission.
+        // Even the same engine must not be able to start through a second controller.
+        if (state != SessionState.IDLE) return false
         activeEngine = engine
         state = SessionState.RESERVED
         generation += 1
