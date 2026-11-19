@@ -1,0 +1,29 @@
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+secrets/
+private/
+# Local databases and runtime state
+*.sqlite
+*.sqlite3
+*.db
+data/
+# Android / Gradle build outputs
+.gradle/
+**/build/
+local.properties
+*.apk
+*.aab
+*.hprof
+# IDE and OS files
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
