@@ -4,11 +4,11 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
-import java.util.concurrent.Executor
+import android.os.Handler
+import android.os.Looper
 
 class AndroidNetworkObservationMonitor(
     private val connectivityManager: ConnectivityManager,
-    private val executor: Executor,
     private val onObservation: (NetworkObservation?) -> Unit,
     private val nowEpochMillis: () -> Long = System::currentTimeMillis
 ) {
@@ -26,7 +26,7 @@ class AndroidNetworkObservationMonitor(
     @Synchronized fun start() {
         if (registered) return
         val request = NetworkRequest.Builder().clearCapabilities().build()
-        connectivityManager.registerNetworkCallback(request, callback, executor)
+        connectivityManager.registerNetworkCallback(request, callback, Handler(Looper.getMainLooper()))
         registered = true
         publish(connectivityManager.activeNetwork)
     }

@@ -62,6 +62,12 @@ class AndroidSecureTrustStore(context: Context) {
         }
     }
 
+    private fun readEncrypted(name: String): ByteArray {
+        val stored = preferences.getString(name, null)
+            ?: throw IllegalStateException("Required trust key is not provisioned")
+        return decrypt(Base64.decode(stored, Base64.NO_WRAP))
+    }
+
     private fun decodePublicKey(encoded: ByteArray): PublicKey =
         KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(encoded))
 

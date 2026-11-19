@@ -37,6 +37,7 @@ class MolidoVpnApplication : Application() {
     /** Caller supplies operator-provisioned HTTPS endpoint and ephemeral device token. */
     fun fetchRemoteConfiguration(baseUrl: String, deviceToken: String): ControlPlaneFetchResult =
         controlPlaneClient.fetchAndVerify(baseUrl, deviceToken, System.currentTimeMillis() / 1000L)
+
     @Volatile var onNetworkAssessmentChanged: (() -> Unit)? = null
 
     fun latestNetworkAssessment(): NetworkAssessment =
@@ -61,13 +62,12 @@ class MolidoVpnApplication : Application() {
         val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         networkMonitor = AndroidNetworkObservationMonitor(
             connectivityManager = connectivity,
-            executor = vpnExecutor,
             onObservation = { current ->
                 observation.set(current)
                 val assessment = latestNetworkAssessment()
                 diagnostics.record(
                     "NETWORK_OBSERVED",
-                    "status=\${assessment.status};transport=\${assessment.transport ?: "unknown"}",
+                    "status=${assessment.status};transport=${assessment.transport ?: "unknown"}",
                     System.currentTimeMillis()
                 )
                 onNetworkAssessmentChanged?.invoke()
