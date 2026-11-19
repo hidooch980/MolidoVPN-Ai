@@ -100,3 +100,15 @@ def test_database_file_is_owner_only_on_posix(tmp_path):
     )
     TestClient(app).get("/health/ready")
     assert stat.S_IMODE(database.stat().st_mode) == 0o600
+
+
+def test_non_finite_configuration_numbers_are_rejected(tmp_path):
+    client, _ = setup_client(tmp_path)
+    admin = {"Authorization": "Bearer molido-test-admin-token-32chars-minimum"}
+    credentials = client.post("/v1/devices/enroll", headers=admin, json={"label": "phone"}).json()
+    response = client.put(
+        f"/v1/devices/{credentials['device_id']}/configuration",
+        headers=admin,
+        json={"payload": {"unsafe": float("nan")}, "expires_at": int(time.time()) + 600},
+    )
+    assert response.status_code == 422
