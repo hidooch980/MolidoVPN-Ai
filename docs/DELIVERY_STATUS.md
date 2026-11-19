@@ -2,7 +2,7 @@
 
 Last updated: 2026-11-19
 
-Reviewed source baseline: `3b8f537ea774e38726e0d92b511e125fec0409c6`.
+Reviewed source baseline: `51efbf4e2920a41c96419861183e1a7edaef9dd5`.
 This document distinguishes repository/CI evidence from Android-device and production evidence. A green CI run is not proof of a working VPN connection.
 
 ## Current delivery decision
@@ -24,7 +24,7 @@ This document distinguishes repository/CI evidence from Android-device and produ
 | Controller/lifecycle unit tests | CI Tested | CI run #43 passed unit tests on commit `627fa1d21698caf17de9c8fa320908ecda67f75c` |
 | Android lint | CI Tested | CI run #43 passed Android lint |
 | Release-variant assembly | CI Built | CI run #43 passed release-variant assembly; CI-only output, not signed owner release or distribution |
-| Latest CI run | Blocked (in progress) | Run #44, ID `44473125681`, commit `3b8f537ea774e38726e0d92b511e125fec0409c6`; unit tests and Android lint passed, release assembly was still running at last inspection |
+| Latest completed CI run | CI Tested | Run #45, ID `44473390219`, commit `51efbf4e2920a41c96419861183e1a7edaef9dd5`; unit tests, Android lint, and release-variant assembly all passed |
 | Physical Android validation | Not Implemented | No device test evidence |
 | Self-hosted backend/server | Server Deployment Required | No VPS/server has been provisioned |
 | Stable signed APK | Blocked | Permanent signing identity not confirmed by owner |
@@ -32,7 +32,11 @@ This document distinguishes repository/CI evidence from Android-device and produ
 
 CI run #43 (completed successfully on parent commit): https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44472058510
 
-Latest CI run #44 (in progress at last inspection): https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44473125681
+CI run #44 (completed successfully): https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44473125681
+
+Latest completed CI run #45: https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44473390219
+
+Master prompt compliance audit: `docs/PROMPT_COMPLIANCE.md`.
 
 ## Six-engine implementation matrix
 
