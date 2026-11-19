@@ -17,5 +17,6 @@
 - Maven Central coordinates: `com.wireguard.android:tunnel:1.0.20260102`.
 - The upstream AAR contributes `com.wireguard.android.backend.GoBackend$VpnService` through manifest merging. This is the sole VPN service/TUN provider in the initial WireGuard integration.
 - The application controller is the only app-level caller of the adapter. No second VPN service is declared.
+- R8 keep rules preserve GoBackend and its JNI entry points for the native userspace library.
 - The configuration is parsed in memory and is not logged or written to disk by this adapter.
 - This source integration is not evidence of successful packet flow, handshake, DNS correctness, leak prevention, or production readiness. Those require a real authorized profile, a deployed endpoint, and physical Android tests.
