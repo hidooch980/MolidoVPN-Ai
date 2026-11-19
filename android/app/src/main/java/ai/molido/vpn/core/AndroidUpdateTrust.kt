@@ -39,8 +39,16 @@ class AndroidUpdateTrust(
             "Installed package version does not match the verified update"
         }
         val current = trustStore.currentInstalledVersionCode()
-        check(installedVersion >= current) { "Installed package is below the trusted version floor" }
-        if (installedVersion > current) trustStore.advanceInstalledVersionCode(installedVersion)
+        if (installedVersion == current) return // Idempotent duplicate PackageInstaller callback.
+        check(
+            UpdateInstallCompletionPolicy.shouldRecordInstalledVersion(
+                InstallCallbackPhase.SUCCEEDED,
+                expectedVersionCode,
+                installedVersion,
+                current
+            )
+        ) { "Installed package is below the trusted version floor or does not match the verified update" }
+        trustStore.advanceInstalledVersionCode(installedVersion)
     }
 
     @Suppress("DEPRECATION")

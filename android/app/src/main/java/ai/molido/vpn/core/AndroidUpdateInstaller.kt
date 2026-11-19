@@ -46,10 +46,11 @@ class AndroidUpdateInstaller(
         val sessionId = packageInstaller.createSession(params)
         var session: PackageInstaller.Session? = null
         try {
-            session = packageInstaller.openSession(sessionId)
-            session.openWrite("base.apk", 0, artifact.size.toLong()).use { output ->
+            val openedSession = packageInstaller.openSession(sessionId)
+            session = openedSession
+            openedSession.openWrite("base.apk", 0, artifact.size.toLong()).use { output ->
                 output.write(artifact)
-                session.fsync(output)
+                openedSession.fsync(output)
             }
             check(
                 preferences.edit()
