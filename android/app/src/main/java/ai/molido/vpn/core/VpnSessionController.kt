@@ -91,6 +91,15 @@ class VpnSessionController(
     @Synchronized fun snapshot(): SessionSnapshot = supervisor.snapshot()
     @Synchronized fun latestPathDecision(): AdaptivePathDecision? = lastPathDecision
 
+    /** Engine adapters/lifecycle observers call this when the active tunnel fails. */
+    @Synchronized
+    fun reportActiveEngineFailure(): Boolean {
+        val owner = activeOwner ?: return false
+        if (activeSession == null || !supervisor.markFailed(owner)) return false
+        record("ENGINE_SESSION_FAILED", "Active engine reported failure; exclusive ownership retained")
+        return true
+    }
+
     @Synchronized
     fun recoveryPlan(attempt: Int, maxAttempts: Int = ResilienceRecoveryCore.DEFAULT_MAX_ATTEMPTS): RecoveryPlan {
         // Never schedule a replacement while the previous engine still owns resources.

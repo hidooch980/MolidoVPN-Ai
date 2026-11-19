@@ -165,7 +165,7 @@ class VpnSessionControllerTest {
         )
         assertTrue(controller.connect(EngineSlot.WIREGUARD, "initial"))
         // A failed session may only be prepared for recovery after it is marked FAILED.
-        supervisor.markFailed(EngineSlot.WIREGUARD)
+        assertTrue(controller.reportActiveEngineFailure())
         val plan = controller.prepareRecovery(0)
         assertEquals(RecoveryAction.SCHEDULE_RETRY, plan.action)
         assertEquals(1_000L, plan.delayMillis)
@@ -187,7 +187,7 @@ class VpnSessionControllerTest {
             networkAssessmentProvider = { NetworkAssessment(NetworkAssessmentStatus.VALIDATED) }
         )
         assertTrue(controller.connect(EngineSlot.WIREGUARD, "initial"))
-        supervisor.markFailed(EngineSlot.WIREGUARD)
+        assertTrue(controller.reportActiveEngineFailure())
         val first = controller.prepareRecovery(0)
         assertEquals(RecoveryAction.NONE, first.action)
         assertEquals(EngineSlot.WIREGUARD, supervisor.currentOwner())
@@ -207,7 +207,7 @@ class VpnSessionControllerTest {
             supervisor, listOf(adapter), networkAssessmentProvider = { network }
         )
         assertTrue(controller.connect(EngineSlot.WIREGUARD, "initial"))
-        supervisor.markFailed(EngineSlot.WIREGUARD)
+        assertTrue(controller.reportActiveEngineFailure())
         network = NetworkAssessment(NetworkAssessmentStatus.NOT_VALIDATED)
         val offline = controller.prepareRecovery(2)
         assertEquals(RecoveryAction.WAIT_FOR_NETWORK, offline.action)
