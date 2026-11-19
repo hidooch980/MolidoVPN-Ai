@@ -116,3 +116,49 @@ def test_non_finite_configuration_numbers_are_rejected(tmp_path):
         ),
     )
     assert response.status_code == 422
+
+
+
+def test_database_directory_must_be_owner_only(tmp_path):
+    import os
+    if os.name != "posix":
+        return
+    data_dir = tmp_path / "shared-data"
+    data_dir.mkdir(mode=0o700)
+    data_dir.chmod(0o755)
+    app = create_app(
+        database_path=data_dir / "control.sqlite3",
+        admin_token="molido-test-admin-token-32chars-minimum",
+        signing_key_pem=ec.generate_private_key(ec.SECP256R1()).private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ),
+    )
+    response = TestClient(app).get("/health/ready")
+    assert response.status_code == 503
+    assert "mode 0700" in response.json()["detail"]
+
+
+def test_database_symlink_is_rejected(tmp_path):
+    import os
+    if os.name != "posix" or not hasattr(os, "O_NOFOLLOW"):
+        return
+    data_dir = tmp_path / "private-data"
+    data_dir.mkdir(mode=0o700)
+    target = tmp_path / "outside.sqlite3"
+    target.write_bytes(b"do-not-touch")
+    link = data_dir / "control.sqlite3"
+    link.symlink_to(target)
+    app = create_app(
+        database_path=link,
+        admin_token="molido-test-admin-token-32chars-minimum",
+        signing_key_pem=ec.generate_private_key(ec.SECP256R1()).private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ),
+    )
+    response = TestClient(app).get("/health/ready")
+    assert response.status_code == 503
+    assert target.read_bytes() == b"do-not-touch"
