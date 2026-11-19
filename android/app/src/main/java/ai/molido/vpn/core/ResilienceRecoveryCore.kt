@@ -13,8 +13,8 @@ object ResilienceRecoveryCore {
              maxAttempts: Int = DEFAULT_MAX_ATTEMPTS): RecoveryPlan {
         require(attempt >= 0)
         require(maxAttempts >= 0)
-        if (sessionState == SessionState.IDLE || sessionState == SessionState.STOPPING)
-            return RecoveryPlan(RecoveryAction.NONE, attempt = attempt, reason = "No recoverable active session")
+        if (sessionState != SessionState.FAILED)
+            return RecoveryPlan(RecoveryAction.NONE, attempt = attempt, reason = "Session is not in a recoverable failed state")
         if (network.status != NetworkAssessmentStatus.VALIDATED)
             return RecoveryPlan(RecoveryAction.WAIT_FOR_NETWORK, attempt = attempt, reason = "Wait for fresh validated connectivity")
         if (attempt >= maxAttempts)
