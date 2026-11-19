@@ -75,6 +75,7 @@ class MainActivity : ComponentActivity() {
             connectAfterConsent = false
             statusView.text = "مجوز VPN داده نشد؛ تونلی شروع نشد."
             setControlsEnabled(true)
+            renderState()
         }
     }
 
@@ -212,7 +213,6 @@ class MainActivity : ComponentActivity() {
         glassButton(text, molidoAppPolicy() == policy).apply {
             textSize = 11f
             setOnClickListener {
-                selectedPolicy = policy
                 molidoApp.setNetworkPolicy(policy)
                 policyView.text = "سیاست شبکه: " + when (policy) {
                     NetworkPolicy.ANY_VALIDATED -> "هر شبکه معتبر"
@@ -224,8 +224,7 @@ class MainActivity : ComponentActivity() {
         }
 
     // The application exposes the active policy through this UI-owned selection.
-    private var selectedPolicy = NetworkPolicy.ANY_VALIDATED
-    private fun molidoAppPolicy() = selectedPolicy
+    private fun molidoAppPolicy() = molidoApp.currentNetworkPolicy()
 
     private fun requestVpnConsentAndConnect() {
         if (profileText.isNullOrBlank()) {
@@ -309,6 +308,11 @@ class MainActivity : ComponentActivity() {
         connectButton.isEnabled = !profileText.isNullOrBlank() && snapshot.state == SessionState.IDLE &&
             network.status == NetworkAssessmentStatus.VALIDATED
         disconnectButton.isEnabled = snapshot.state != SessionState.IDLE
+        policyView.text = "سیاست شبکه: " + when (molidoApp.currentNetworkPolicy()) {
+            NetworkPolicy.ANY_VALIDATED -> "هر شبکه معتبر"
+            NetworkPolicy.UNMETERED_ONLY -> "فقط شبکه بدون هزینه"
+            NetworkPolicy.WIFI_ONLY -> "فقط Wi‑Fi"
+        }
         message?.let { statusView.text = it }
     }
 
