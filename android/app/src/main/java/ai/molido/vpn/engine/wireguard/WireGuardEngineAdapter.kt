@@ -11,6 +11,7 @@ import ai.molido.vpn.core.EngineStartException
 import ai.molido.vpn.core.EngineFailureAwareAdapter
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * WireGuard userspace adapter backed by the upstream embeddable Android tunnel library.
@@ -40,12 +41,16 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter, EngineFailureAwa
         val parsed = Config.parse(ByteArrayInputStream(encoded))
         require(parsed.peers.isNotEmpty()) { "WireGuard configuration must contain at least one peer" }
 
-        @Volatile var startupComplete = false
-        @Volatile var intentionalStop = false
+        // These flags cross the backend callback boundary, so use atomic visibility.
+        val startupComplete = AtomicBoolean(false)
+        val intentionalStop = AtomicBoolean(false)
         val tunnel = object : Tunnel {
             override fun getName(): String = TUNNEL_NAME
             override fun onStateChange(newState: Tunnel.State) {
-                if (newState == Tunnel.State.DOWN && startupComplete && !intentionalStop) {
+                if (newState == Tunnel.State.DOWN &&
+                    startupComplete.get() &&
+                    !intentionalStop.get()
+                ) {
                     failureListener?.invoke()
                 }
             }
@@ -57,7 +62,7 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter, EngineFailureAwa
             override fun stop() = synchronized(lock) {
                 if (stopped) return@synchronized
                 check(activeTunnel === tunnel) { "WireGuard session ownership mismatch" }
-                intentionalStop = true
+                intentionalStop.set(true)
                 try {
                     val resultingState = backend.setState(tunnel, Tunnel.State.DOWN, null)
                     check(resultingState == Tunnel.State.DOWN && backend.getState(tunnel) == Tunnel.State.DOWN) {
@@ -66,7 +71,7 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter, EngineFailureAwa
                     activeTunnel = null
                     stopped = true
                 } catch (failure: Throwable) {
-                    intentionalStop = false
+                    intentionalStop.set(false)
                     throw failure
                 }
             }
@@ -79,7 +84,7 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter, EngineFailureAwa
             check(resultingState == Tunnel.State.UP && backend.getState(tunnel) == Tunnel.State.UP) {
                 "WireGuard backend did not enter UP state"
             }
-            startupComplete = true
+            startupComplete.set(true)
         } catch (failure: Throwable) {
             var cleanupFailure: Throwable? = null
             try {
