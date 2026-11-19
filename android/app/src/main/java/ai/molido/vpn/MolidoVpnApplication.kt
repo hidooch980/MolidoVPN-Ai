@@ -73,6 +73,9 @@ class MolidoVpnApplication : Application() {
                 onNetworkAssessmentChanged?.invoke()
             }
         )
+        // Keep observing the default network while the VPN session is active,
+        // even when the Activity is backgrounded.
+        networkMonitor.start()
     }
 
     override fun onTerminate() {
