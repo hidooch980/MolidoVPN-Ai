@@ -7,24 +7,23 @@ This is operator-deployed control-plane source. It is not hosted by GitHub Actio
 - Admin-token protected device enrollment and revocation.
 - Random per-device bearer token returned once; only SHA-256 hash is stored.
 - SQLite persistence with foreign keys and WAL.
+- POSIX SQLite database file is created/restricted to owner read/write permissions (0600).
 - Per-device configuration revisioning, expiry, and ECDSA P-256 signatures.
 - Device-authenticated configuration retrieval and minimal audit events.
-- Liveness and readiness endpoints.
+- Liveness and readiness endpoints. Readiness fails closed unless the admin token is at least 32 characters and the P-256 signing key loads successfully.
 
 ## Local development
 
-Python 3.11+ is recommended. Install \`backend/requirements.txt\`, then set \`MOLIDO_ADMIN_TOKEN\`, \`MOLIDO_CONFIG_SIGNING_KEY_FILE\`, and \`MOLIDO_DB_PATH\`. Run:
+Python 3.11+ is recommended. Install backend/requirements.txt, then set MOLIDO_ADMIN_TOKEN, MOLIDO_CONFIG_SIGNING_KEY_FILE, and MOLIDO_DB_PATH. Run:
 
-\`\`\`sh
-uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
-\`\`\`
+    uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
 
 The signing key must be provisioned and backed up by the operator outside the repository. The service intentionally does not generate or persist signing keys.
 
 ## Production requirements
 
-Deploy only on approved self-hosted infrastructure. Put the API behind a TLS 1.2+ reverse proxy; restrict access; protect admin token and private signing key; use encrypted backups; test restore, key rotation, revocation, monitoring, upgrade and rollback. Run as a non-root service account. No production deployment or security certification is claimed.
+Deploy only on approved self-hosted infrastructure. Put the API behind a TLS 1.2+ reverse proxy; restrict access; protect admin token and private signing key; use encrypted backups; test restore, key rotation, revocation, monitoring, upgrade and rollback. Run as a non-root service account. Keep the database and its parent data directory private to that account (recommended directory mode 0700); protect SQLite WAL/SHM sidecar files and backups as sensitive data. No production deployment or security certification is claimed.
 
 ## Signature format
 
-The ECDSA signature covers UTF-8 bytes: \`revision + LF + expires_at_epoch_seconds + LF + canonical_json_payload\`. Android verifies the same canonical bytes using an owner-pinned public key and advances its encrypted local revision only after successful verification.
+The ECDSA signature covers UTF-8 bytes: revision + LF + expires_at_epoch_seconds + LF + canonical_json_payload. Android verifies the same canonical bytes using an owner-pinned public key and advances its encrypted local revision only after successful verification.
