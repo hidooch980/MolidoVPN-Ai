@@ -1,10 +1,9 @@
 # Master Prompt Compliance Audit
 
-Audit date: 2026-11-19
-Repository: \`hidooch980/MolidoVPN-Ai\`
-Branch: \`development/molido-vpn-ai-from-scratch\`
+Repository: hidooch980/MolidoVPN-Ai
+Branch: development/molido-vpn-ai-from-scratch
 
-This audit distinguishes source implementation, CI evidence, physical-device tests, server deployment and production verification.
+This audit distinguishes source implementation, CI evidence, physical-device tests, server deployment and production verification. GitHub Actions is the live source of truth for commit-specific CI results; cancelled and in-progress runs are never counted as successful.
 
 ## Immutable architecture
 
@@ -18,13 +17,13 @@ This audit distinguishes source implementation, CI evidence, physical-device tes
 
 ## Core status
 
-| Core | Status | Evidence |
+| Core | Status | Evidence / boundary |
 |---|---|---|
 | Session & TUN Supervisor | Source Implemented | Exclusive controller and cleanup retry tests |
-| Network Intelligence | Source Implemented | Passive default-network observation, timestamped assessment and stale-data rejection |
-| Adaptive Path & Policy | Partially Source Implemented | Controller blocks connection unless current measured network meets policy |
-| Security & Privacy | Partially Source Implemented | Redaction, HTTPS-only bounded client, Android Keystore encrypted trust material; security review pending |
-| Resilience & Recovery | Partially Source Implemented | Bounded backoff planner; no automatic retry scheduler |
+| Network Intelligence | Source Implemented | Passive default-network observation, timestamped assessment, stale/lost-network rejection |
+| Adaptive Path & Policy | Partially Source Implemented | Controller blocks start unless current measured network meets policy |
+| Security & Privacy | Partially Source Implemented | Redaction, HTTPS-only bounded client, Android Keystore encrypted trust material; full security validation pending |
+| Resilience & Recovery | Partially Source Implemented | Bounded backoff; only FAILED state can retry; pending cleanup prevents replacement; no scheduler |
 | Diagnostics & Observability | Partially Source Implemented | Disabled-by-default bounded local ring buffer |
 | Control Plane & Configuration | Partially Source Implemented | Self-hosted FastAPI source, ECDSA config signatures, Android HTTPS client; server not deployed |
 | Update & Integrity | Partially Source Implemented | Signed manifest/digest verification and encrypted local counters; installer and end-to-end rollback not implemented |
@@ -42,19 +41,34 @@ This audit distinguishes source implementation, CI evidence, physical-device tes
 
 Do not add a seventh engine. Each remaining engine needs license, dependency, security and one-TUN compatibility review.
 
+## Corrective audit changes
+
+- Backoff test corrected to test the configured retry ceiling without weakening production retry limits.
+- Recovery planner now refuses retries for IDLE, RESERVED, RUNNING and STOPPING states.
+- Session controller refuses recovery while an earlier session still owns resources awaiting cleanup.
+- Android network observation moved from Activity lifecycle to Application lifecycle and clears a lost default-network observation.
+- Backend readiness now rejects admin tokens shorter than 32 characters, matching protected admin operations.
+- POSIX SQLite database file permissions are restricted to owner read/write; production data directory, WAL/SHM and backups must also be private.
+- Added repository ignore protections for local environment files, private keys, keystores, databases and build outputs.
+
 ## Backend and client security boundaries
 
 - Backend uses admin bearer authentication, per-device random bearer tokens stored as SHA-256 hashes, SQLite persistence, device revocation, expiring signed configuration and audit events.
 - Android client requires HTTPS, rejects redirects, caps response size and verifies ECDSA signatures before advancing the local configuration revision.
-- Trust public keys are pinned once and encrypted at rest with Android Keystore AES-GCM. The initial key must be provisioned out of band by the owner.
-- Update artifact verification checks ECDSA signature, expiry, monotonic version and SHA-256 digest. Installed version is advanced only after a future installer reports success; that installer integration is not yet present.
+- Trust public keys are pinned once and encrypted at rest with Android Keystore AES-GCM. Initial key pinning must be provisioned out of band by the owner.
+- Update artifact verification checks ECDSA signature, expiry, monotonic version and SHA-256 digest. Installed version advances only after a future installer reports success; that installer integration is not present.
 - Local encrypted counters do not claim protection against rooted devices or reinstall-based state reset.
 - No backend endpoint, token, signing key or public key is configured in this repository.
 
-## CI and release gates
+## Remaining release blockers
 
-Backend tests and dependency installation passed in backend job of run \`44480442687\` for commit \`dce9d71a634afda74781ff5ecc596f1a370d0e98\`. The Android job had not completed at the time of audit. Subsequent commits require a fresh completed run.
-
-Physical Android tests, authorized WireGuard server, DNS/IPv4/IPv6/leak tests, production backend deployment, owner-approved permanent signing identity, installer/rollback verification and Stable Production release remain blocked.
+- Physical Android tests, authorized WireGuard server, DNS/IPv4/IPv6/leak tests.
+- Production backend deployment, server hardening and backup/restore evidence.
+- Owner-approved permanent signing identity.
+- Downloader, PackageInstaller integration, rollback and recovery verification.
+- Five unimplemented engines.
+- Automatic reconnect/process-death recovery.
+- Full threat-model validation, dependency vulnerability scanning and penetration testing.
+- Stable Production release gates.
 
 No real-world behavior is inferred from source presence or CI.
