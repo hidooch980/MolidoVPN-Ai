@@ -212,6 +212,7 @@ class MainActivity : ComponentActivity() {
         glassButton(text, molidoAppPolicy() == policy).apply {
             textSize = 11f
             setOnClickListener {
+                selectedPolicy = policy
                 molidoApp.setNetworkPolicy(policy)
                 policyView.text = "سیاست شبکه: " + when (policy) {
                     NetworkPolicy.ANY_VALIDATED -> "هر شبکه معتبر"
