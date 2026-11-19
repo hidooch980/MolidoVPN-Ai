@@ -186,12 +186,13 @@ class VpnSessionControllerTest {
     fun recoveryWaitsForValidatedNetworkAndDoesNotConsumeAttempt() {
         val supervisor = SessionSupervisor()
         val adapter = FakeAdapter(EngineSlot.WIREGUARD)
-        var network = NetworkAssessment(NetworkAssessmentStatus.NOT_VALIDATED)
+        var network = NetworkAssessment(NetworkAssessmentStatus.VALIDATED)
         val controller = VpnSessionController(
             supervisor, listOf(adapter), networkAssessmentProvider = { network }
         )
         assertTrue(controller.connect(EngineSlot.WIREGUARD, "initial"))
         supervisor.markFailed(EngineSlot.WIREGUARD)
+        network = NetworkAssessment(NetworkAssessmentStatus.NOT_VALIDATED)
         val offline = controller.prepareRecovery(2)
         assertEquals(RecoveryAction.WAIT_FOR_NETWORK, offline.action)
         assertEquals(2, offline.attempt)
