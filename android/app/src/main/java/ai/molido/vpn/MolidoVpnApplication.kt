@@ -38,7 +38,6 @@ class MolidoVpnApplication : Application() {
         val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         networkMonitor = AndroidNetworkObservationMonitor(
             connectivityManager = connectivity,
-            executor = vpnExecutor,
             onObservation = { observation ->
                 assessment.set(NetworkIntelligenceCore.assess(observation, System.currentTimeMillis()))
             }

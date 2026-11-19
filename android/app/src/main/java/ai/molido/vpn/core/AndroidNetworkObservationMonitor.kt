@@ -3,16 +3,15 @@ package ai.molido.vpn.core
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
-import android.net.NetworkRequest
-import java.util.concurrent.Executor
+import android.os.Handler
+import android.os.Looper
 
 /**
- * Lifecycle-bound passive network monitor. Register while the app is active and
- * unregister on stop; it never performs connectivity probes or sends telemetry.
+ * Lifecycle-bound passive monitor of Android's default network.
+ * Uses the Handler overload available on the app's minimum API level.
  */
 class AndroidNetworkObservationMonitor(
     private val connectivityManager: ConnectivityManager,
-    private val executor: Executor,
     private val onObservation: (NetworkObservation?) -> Unit,
     private val nowEpochMillis: () -> Long = System::currentTimeMillis
 ) {
@@ -23,16 +22,13 @@ class AndroidNetworkObservationMonitor(
         override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
             publish(network, capabilities)
         }
-        override fun onLost(network: Network) {
-            publish(connectivityManager.activeNetwork)
-        }
+        override fun onLost(network: Network) = publish(connectivityManager.activeNetwork)
     }
 
     @Synchronized
     fun start() {
         if (registered) return
-        val request = NetworkRequest.Builder().clearCapabilities().build()
-        connectivityManager.registerNetworkCallback(request, callback, executor)
+        connectivityManager.registerDefaultNetworkCallback(callback, Handler(Looper.getMainLooper()))
         registered = true
         publish(connectivityManager.activeNetwork)
     }
@@ -42,6 +38,7 @@ class AndroidNetworkObservationMonitor(
         if (!registered) return
         connectivityManager.unregisterNetworkCallback(callback)
         registered = false
+        onObservation(null)
     }
 
     private fun publish(network: Network?, supplied: NetworkCapabilities? = null) {
