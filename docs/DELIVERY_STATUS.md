@@ -49,7 +49,7 @@ No seventh engine is allowed. The five remaining engines require individual upst
 
 GitHub Actions is the live source of truth for the latest commit and workflow results: https://github.com/hidooch980/MolidoVPN-Ai/actions
 
-Latest fully successful run before the most recent source edits: [Android CI #89](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44554011937), commit `fa6bfc50eb8cfd842cb0e3588a67ee885753ea9a`. CI #99 passed Backend but failed Android compilation due to a syntax regression in MainActivity.kt; the syntax issue has been corrected in source and requires a fresh complete CI run. A run counts only when completed and its relevant jobs/steps succeeded on the exact commit being assessed. Cancelled, failed, and in-progress runs are not successful evidence. CI success proves only the checks actually executed; it does not prove VPN handshake, packet routing, DNS, leak prevention or production readiness.
+Latest fully successful CI run: [Android CI #100](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44557474004), commit `f0aa000fa084c1ed49a2f2ad0b50c1cb251ac8a3`. Backend tests, Android unit tests, Android lint and release-variant assembly all passed. CI #99 had exposed a Kotlin syntax regression in `MainActivity.kt`; the correction is included in the #100 commit and verified by the successful run. A run counts only when completed and its relevant jobs/steps succeeded on the exact commit being assessed. CI success proves only the checks actually executed; it does not prove VPN handshake, packet routing, DNS, leak prevention or production readiness.
 
 ## Real-world validation still required
 
