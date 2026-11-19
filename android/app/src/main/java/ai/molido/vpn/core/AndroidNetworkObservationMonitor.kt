@@ -6,10 +6,6 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import java.util.concurrent.Executor
 
-/**
- * Lifecycle-bound passive network monitor. Register while the app is active and
- * unregister on stop; it never performs connectivity probes or sends telemetry.
- */
 class AndroidNetworkObservationMonitor(
     private val connectivityManager: ConnectivityManager,
     private val executor: Executor,
@@ -17,19 +13,17 @@ class AndroidNetworkObservationMonitor(
     private val nowEpochMillis: () -> Long = System::currentTimeMillis
 ) {
     private var registered = false
-
     private val callback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) = publish(network)
+        override fun onAvailable(network: Network) = publishIfDefault(network)
         override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
-            publish(network, capabilities)
+            if (network == connectivityManager.activeNetwork) publish(network, capabilities)
         }
         override fun onLost(network: Network) {
-            publish(connectivityManager.activeNetwork)
+            if (network == connectivityManager.activeNetwork) publish(connectivityManager.activeNetwork)
         }
     }
 
-    @Synchronized
-    fun start() {
+    @Synchronized fun start() {
         if (registered) return
         val request = NetworkRequest.Builder().clearCapabilities().build()
         connectivityManager.registerNetworkCallback(request, callback, executor)
@@ -37,11 +31,14 @@ class AndroidNetworkObservationMonitor(
         publish(connectivityManager.activeNetwork)
     }
 
-    @Synchronized
-    fun stop() {
+    @Synchronized fun stop() {
         if (!registered) return
         connectivityManager.unregisterNetworkCallback(callback)
         registered = false
+    }
+
+    private fun publishIfDefault(network: Network) {
+        if (network == connectivityManager.activeNetwork) publish(network)
     }
 
     private fun publish(network: Network?, supplied: NetworkCapabilities? = null) {
@@ -49,6 +46,7 @@ class AndroidNetworkObservationMonitor(
             onObservation(null)
             return
         }
+        if (network != connectivityManager.activeNetwork && supplied == null) return
         val caps = supplied ?: connectivityManager.getNetworkCapabilities(network)
         if (caps == null) {
             onObservation(null)
@@ -61,16 +59,14 @@ class AndroidNetworkObservationMonitor(
             caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> NetworkTransport.VPN
             else -> NetworkTransport.OTHER
         }
-        onObservation(
-            NetworkObservation(
-                transport = transport,
-                validation = if (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED))
-                    NetworkValidation.VALIDATED else NetworkValidation.NOT_VALIDATED,
-                observedAtEpochMillis = nowEpochMillis(),
-                metered = !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED),
-                downstreamKbps = caps.linkDownstreamBandwidthKbps.takeIf { it > 0 },
-                upstreamKbps = caps.linkUpstreamBandwidthKbps.takeIf { it > 0 }
-            )
-        )
+        onObservation(NetworkObservation(
+            transport = transport,
+            validation = if (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED))
+                NetworkValidation.VALIDATED else NetworkValidation.NOT_VALIDATED,
+            observedAtEpochMillis = nowEpochMillis(),
+            metered = !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED),
+            downstreamKbps = caps.linkDownstreamBandwidthKbps.takeIf { it > 0 },
+            upstreamKbps = caps.linkUpstreamBandwidthKbps.takeIf { it > 0 }
+        ))
     }
 }
