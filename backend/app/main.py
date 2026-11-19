@@ -48,7 +48,7 @@ def create_app(*, database_path=None, admin_token=None, signing_key_pem=None) ->
             conn.close()
 
     def require_admin(authorization: str | None = Header(default=None)):
-        if not admin_secret or not authorization or not authorization.startswith("Bearer "):
+        if len(admin_secret) < 32 or not authorization or not authorization.startswith("Bearer "):
             raise HTTPException(status_code=503, detail="Admin authentication is not configured")
         if not hmac.compare_digest(authorization[7:], admin_secret):
             raise HTTPException(status_code=401, detail="Unauthorized")
@@ -70,7 +70,7 @@ def create_app(*, database_path=None, admin_token=None, signing_key_pem=None) ->
             key = serialization.load_pem_private_key(private_pem, password=None)
         except (ValueError, TypeError):
             raise HTTPException(status_code=503, detail="Configuration signing key is invalid")
-        if not isinstance(key, ec.EllipticCurvePrivateKey):
+        if not isinstance(key, ec.EllipticCurvePrivateKey) or key.curve.name != "secp256r1":
             raise HTTPException(status_code=503, detail="An EC signing key is required")
         return key
 
@@ -84,7 +84,8 @@ def create_app(*, database_path=None, admin_token=None, signing_key_pem=None) ->
             raise HTTPException(status_code=503, detail="Admin authentication is not configured")
         with db() as conn:
             conn.execute("SELECT 1").fetchone()
-        return {"status": "ready", "database": "reachable", "signing_key_configured": bool(private_pem)}
+        load_signing_key()
+        return {"status": "ready", "database": "reachable", "signing_key_configured": True}
 
     @app.post("/v1/devices/enroll")
     def enroll(body: EnrollRequest, _: None = Depends(require_admin)):
