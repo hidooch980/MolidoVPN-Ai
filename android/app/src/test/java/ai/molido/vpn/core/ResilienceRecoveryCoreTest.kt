@@ -13,7 +13,10 @@ class ResilienceRecoveryCoreTest {
     @Test fun backoffIsBoundedAndExponential() {
         assertEquals(1_000L, ResilienceRecoveryCore.plan(SessionState.FAILED, online, 0).delayMillis)
         assertEquals(4_000L, ResilienceRecoveryCore.plan(SessionState.FAILED, online, 2).delayMillis)
-        assertEquals(60_000L, ResilienceRecoveryCore.plan(SessionState.FAILED, online, 20).delayMillis)
+        val capped = ResilienceRecoveryCore.plan(SessionState.FAILED, online, 20, maxAttempts = 25)
+        assertEquals(RecoveryAction.SCHEDULE_RETRY, capped.action)
+        assertEquals(60_000L, capped.delayMillis)
+        assertEquals(21, capped.attempt)
     }
     @Test fun retryLimitStops() {
         assertEquals(RecoveryAction.STOP_RETRIES, ResilienceRecoveryCore.plan(SessionState.FAILED, online, 5).action)
