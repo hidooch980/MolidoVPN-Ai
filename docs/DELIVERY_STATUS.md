@@ -22,9 +22,9 @@ Last updated: 2026-11-19
 | Physical Android device verification | Not Implemented | No device test evidence |
 | Production verification | Blocked | Requires real device and deployed server evidence |
 
-## Latest branch revision
+## Branch tracking
 
-`d08b6f8d652c364a991a80cfc97f351ac6ccd925`
+The branch is updated directly with incremental commits. Use the branch head shown by GitHub as the authoritative current revision.
 
 ## Release gates
 
