@@ -10,6 +10,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import ai.molido.vpn.core.NetworkAssessmentStatus
 import ai.molido.vpn.core.SessionStatusText
 import ai.molido.vpn.core.SessionState
 import java.io.ByteArrayOutputStream
@@ -27,6 +28,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var disconnectButton: Button
     private var profileText: String? = null
     private var connectAfterConsent = false
+    private val molidoApp get() = application as MolidoVpnApplication
 
     private val profilePicker = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -81,6 +83,17 @@ class MainActivity : ComponentActivity() {
         renderState()
     }
 
+    override fun onStart() {
+        super.onStart()
+        molidoApp.networkMonitor.start()
+        renderState()
+    }
+
+    override fun onStop() {
+        molidoApp.networkMonitor.stop()
+        super.onStop()
+    }
+
     private fun buildScreen() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -129,8 +142,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestVpnConsentAndConnect() {
-        val profile = profileText
-        if (profile.isNullOrBlank()) {
+        if (profileText.isNullOrBlank()) {
             statusView.text = "Import a WireGuard profile first."
             return
         }
@@ -149,10 +161,11 @@ class MainActivity : ComponentActivity() {
         val configuration = profileText ?: return
         setControlsEnabled(false)
         statusView.text = "Starting WireGuard backend…"
-        (application as MolidoVpnApplication).vpnExecutor.execute {
+        molidoApp.vpnExecutor.execute {
             try {
-                val started = (application as MolidoVpnApplication)
-                    .vpnSessions.connect(ai.molido.vpn.core.EngineSlot.WIREGUARD, configuration)
+                val started = molidoApp.vpnSessions.connect(
+                    ai.molido.vpn.core.EngineSlot.WIREGUARD, configuration
+                )
                 runOnUiThread {
                     setControlsEnabled(true)
                     val detail = if (started) {
@@ -174,16 +187,13 @@ class MainActivity : ComponentActivity() {
     private fun disconnectTunnel() {
         setControlsEnabled(false)
         statusView.text = "Stopping VPN session…"
-        (application as MolidoVpnApplication).vpnExecutor.execute {
+        molidoApp.vpnExecutor.execute {
             try {
-                val stopped = (application as MolidoVpnApplication).vpnSessions.disconnect()
+                val stopped = molidoApp.vpnSessions.disconnect()
                 runOnUiThread {
                     setControlsEnabled(true)
-                    val detail = if (stopped) {
-                        "VPN session stopped."
-                    } else {
-                        "Session cleanup is not complete. Ownership remains reserved."
-                    }
+                    val detail = if (stopped) "VPN session stopped."
+                    else "Session cleanup is not complete. Ownership remains reserved."
                     renderState(detail)
                 }
             } catch (_: Throwable) {
@@ -196,8 +206,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun renderState(detail: String? = null) {
-        val snapshot = (application as MolidoVpnApplication).vpnSessions.snapshot()
-        statusView.text = SessionStatusText.render(snapshot, detail)
+        val snapshot = molidoApp.vpnSessions.snapshot()
+        val network = molidoApp.latestNetworkAssessment()
+        val networkText = when (network.status) {
+            NetworkAssessmentStatus.VALIDATED -> "Network: validated (${network.transport ?: "unknown transport"})"
+            NetworkAssessmentStatus.NOT_VALIDATED -> "Network: not validated by Android"
+            NetworkAssessmentStatus.STALE -> "Network: measurement is stale"
+            NetworkAssessmentStatus.UNKNOWN -> "Network: measurements unavailable"
+        }
+        statusView.text = SessionStatusText.render(snapshot, detail) + "\n" + networkText
         disconnectButton.visibility =
             if (snapshot.state == SessionState.IDLE) View.GONE else View.VISIBLE
     }
