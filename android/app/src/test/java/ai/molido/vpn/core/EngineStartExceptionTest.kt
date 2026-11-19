@@ -16,7 +16,7 @@ class EngineStartExceptionTest {
         val error = EngineStartException("cleanup pending", session, cause)
         assertSame(session, error.cleanupSession)
         assertSame(cause, error.cause)
-        error.cleanupSession.stop()
+        error.cleanupSession?.stop()
         assertEquals(1, session.stops)
     }
 }
