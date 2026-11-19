@@ -49,6 +49,9 @@ class MolidoVpnApplication : Application() {
         selectedNetworkPolicy.set(policy)
     }
 
+    /** Returns the currently active policy so recreated Activities render truthful settings. */
+    fun currentNetworkPolicy(): NetworkPolicy = selectedNetworkPolicy.get()
+
     override fun onCreate() {
         super.onCreate()
         vpnExecutor = Executors.newSingleThreadExecutor { task ->
