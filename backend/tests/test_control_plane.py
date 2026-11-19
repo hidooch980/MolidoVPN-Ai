@@ -88,7 +88,6 @@ def test_database_file_is_owner_only_on_posix(tmp_path):
     if os.name != "posix":
         return
     database = tmp_path / "private-control.sqlite3"
-    client, _ = setup_client(tmp_path)
     # Trigger the database connection against a dedicated app path.
     app = create_app(
         database_path=database,
