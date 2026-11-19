@@ -27,6 +27,13 @@ def create_app(*, database_path=None, admin_token=None, signing_key_pem=None) ->
 
     def connect_db():
         db_path.parent.mkdir(parents=True, exist_ok=True)
+        # Device-token hashes and signed configuration payloads may be sensitive.
+        # Create/restrict the SQLite file before opening it; never chmod its parent,
+        # which may be a shared operator-managed directory.
+        if os.name == "posix":
+            fd = os.open(db_path, os.O_CREAT | os.O_RDWR, 0o600)
+            os.close(fd)
+            os.chmod(db_path, 0o600)
         conn = sqlite3.connect(db_path, timeout=10)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
