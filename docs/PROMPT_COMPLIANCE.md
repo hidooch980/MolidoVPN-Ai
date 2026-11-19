@@ -26,7 +26,7 @@ This audit distinguishes source implementation, CI evidence, physical-device tes
 | Resilience & Recovery | Partially Source Implemented | Bounded backoff; only FAILED state can retry; pending cleanup prevents replacement; no scheduler |
 | Diagnostics & Observability | Partially Source Implemented | Disabled-by-default bounded local ring buffer |
 | Control Plane & Configuration | Partially Source Implemented | Self-hosted FastAPI source, ECDSA config signatures, Android HTTPS client; server not deployed |
-| Update & Integrity | Partially Source Implemented | Signed manifest/digest verification and encrypted local counters; installer and end-to-end rollback not implemented |
+| Update & Integrity | Partially Source Implemented | Signed manifest/digest verification, encrypted rollback floor, PackageInstaller session staging, package identity/version checks, internal status callback and PackageManager-confirmed success counter; download transport and device-level rollback validation pending |
 
 ## Engine status
 
@@ -56,13 +56,13 @@ Do not add a seventh engine. Each remaining engine needs license, dependency, se
 - Backend uses admin bearer authentication, per-device random bearer tokens stored as SHA-256 hashes, SQLite persistence, device revocation, expiring signed configuration and audit events.
 - Android client requires HTTPS, rejects redirects, caps response size and verifies ECDSA signatures before advancing the local configuration revision.
 - Trust public keys are pinned once and encrypted at rest with Android Keystore AES-GCM. Initial key pinning must be provisioned out of band by the owner.
-- Update artifact verification checks ECDSA signature, expiry, monotonic version and SHA-256 digest. Installed version advances only after a future installer reports success; that installer integration is not present.
+- Update artifact verification checks ECDSA signature, expiry, monotonic version and SHA-256 digest. The Android client stages verified APKs with PackageInstaller, checks package identity and signed versionCode, forwards pending user confirmation, and advances the encrypted installed-version counter only after PackageInstaller STATUS_SUCCESS plus an exact PackageManager version match. Android enforces signing continuity with the installed package; duplicate success callbacks are idempotent.
 - Local encrypted counters do not claim protection against rooted devices or reinstall-based state reset.
 - No backend endpoint, token, signing key or public key is configured in this repository.
 
 ## Latest CI evidence
 
-- [Android CI #104](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44558369381), source commit `4afe8436b29d9e457ccdb7a7bcca190ac6a9513e`: completed successfully. Backend tests, Android unit tests, Android lint and release-variant assembly all passed.
+- [Android CI #106](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44563299701), source commit `aef9eb3874dc350144be5aab9d4c20cd129a679b`: completed successfully. Backend tests, Android unit tests (including PackageInstaller completion policy), Android lint and release-variant assembly all passed.
 - The backend audit also made signed configuration revision allocation transactional with SQLite `BEGIN IMMEDIATE` and added a regression test proving each successive publish receives a strictly increasing revision.
 - CI success is source/build evidence only. It is not Android Device Tested, Server Deployment Verified, or Production Verified.
 
@@ -71,7 +71,7 @@ Do not add a seventh engine. Each remaining engine needs license, dependency, se
 - Physical Android tests, authorized WireGuard server, DNS/IPv4/IPv6/leak tests.
 - Production backend deployment, server hardening and backup/restore evidence.
 - Owner-approved permanent signing identity.
-- Downloader, PackageInstaller integration, rollback and recovery verification.
+- Production update download transport, physical PackageInstaller confirmation/install test, interrupted-install recovery and rollback verification.
 - Five unimplemented engines.
 - Automatic reconnect/process-death recovery.
 - Full threat-model validation, dependency vulnerability scanning and penetration testing.

@@ -19,7 +19,7 @@ Branch: development/molido-vpn-ai-from-scratch
 | Resilience & Recovery | Partially Source Implemented | Bounded exponential planner; retries only from FAILED; pending cleanup blocks replacement; no scheduler/process-death recovery |
 | Diagnostics & Observability | Partially Source Implemented | Bounded, disabled-by-default, process-local ring buffer; no telemetry or persistent logs |
 | Control Plane & Configuration | Partially Source Implemented; Server Deployment Required | FastAPI/SQLite enrollment, revocation and ECDSA-signed config source; Android verifies signed config; server not deployed |
-| Update & Integrity | Partially Source Implemented | ECDSA manifest and SHA-256 verification; downloader, installer, successful-install callback and rollback UX not integrated |
+| Update & Integrity | Partially Source Implemented | ECDSA manifest and SHA-256 verification; Android PackageInstaller session staging, internal status receiver, user-confirmation forwarding, package identity/version checks, and PackageManager-confirmed monotonic success callback are implemented; download transport and physical install/rollback validation remain pending |
 
 ## Six-engine matrix
 
@@ -49,7 +49,7 @@ No seventh engine is allowed. The five remaining engines require individual upst
 
 GitHub Actions is the live source of truth for the latest commit and workflow results: https://github.com/hidooch980/MolidoVPN-Ai/actions
 
-Latest fully successful CI run: [Android CI #104](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44558369381), source commit `4afe8436b29d9e457ccdb7a7bcca190ac6a9513e`. Backend tests, Android unit tests, Android lint and release-variant assembly all passed. This run includes the SQLite private-directory/symlink hardening and the new atomic configuration-revision allocation using `BEGIN IMMEDIATE`, with a monotonic revision regression test. The later documentation-only commits do not alter the tested source. CI success proves only the checks actually executed; it does not prove VPN handshake, packet routing, DNS, leak prevention or production readiness.
+Latest fully successful CI run: [Android CI #106](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44563299701), source commit `aef9eb3874dc350144be5aab9d4c20cd129a679b`. Backend tests, Android unit tests (including update completion policy), Android lint and release-variant assembly all passed. This run includes the SQLite private-directory/symlink hardening and the new atomic configuration-revision allocation using `BEGIN IMMEDIATE`, with a monotonic revision regression test. The later documentation-only commits do not alter the tested source. CI success proves only the checks actually executed; it does not prove VPN handshake, packet routing, DNS, leak prevention or production readiness.
 
 ## Real-world validation still required
 
@@ -67,6 +67,8 @@ Latest fully successful CI run: [Android CI #104](https://github.com/hidooch980/
 - The HTTPS client uses Android platform TLS validation, rejects non-HTTPS URLs and redirects, bounds response size and keeps device tokens in caller memory. No live server URL or token is configured.
 - The backend requires operator-provisioned admin token and ECDSA private key outside the repository. No production server is running.
 - Recovery computes bounded plans only; it does not automatically restart a tunnel.
+- Android update installation now uses a full-install PackageInstaller session. The candidate must pass the pinned ECDSA manifest and SHA-256 check, match this app's package name and signed versionCode, and is handed to Android for signature-continuity enforcement. PackageInstaller status is received by a non-exported receiver; pending user confirmation is forwarded to the system installer UI. The encrypted installed-version counter advances only after STATUS_SUCCESS and an exact match with PackageManager's installed version; duplicate callbacks are idempotent.
+- The update installer accepts a verified APK byte array; a production download transport/control-plane artifact delivery path is not yet integrated. Device-level confirmation, interrupted-install recovery, and rollback behavior remain unverified.
 - Diagnostics are disabled by default, process-local and not uploaded.
 - Five engines are not implemented.
 - No permanent signing key was generated or changed.
