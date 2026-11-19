@@ -33,7 +33,7 @@ This is an initial source-level threat model for the Android client and self-hos
 | Retry starts a second tunnel while old resources remain | Retry only from FAILED; controller blocks while cleanup session exists | No automatic recovery scheduler or process-death recovery |
 | Stale network facts allow a connection | Timestamped assessment, default-network monitor, stale and lost-network clearing | OS callback behavior still needs physical-device validation |
 | Weak administrator credential | Backend rejects admin tokens shorter than 32 characters; readiness fails closed | Entropy and secure provisioning remain operator responsibilities |
-| Device-token database disclosure | Only SHA-256 token hashes stored; POSIX DB file mode 0600 | Parent directory, WAL/SHM files, backups and host access must be secured by operator |
+| Device-token database disclosure | Only SHA-256 token hashes stored; POSIX DB file mode 0600 and service-owned parent directory mode 0700, exact mode enforced at each connection | Parent directory is enforced as service-owned mode 0700; WAL/SHM inherit that boundary; backups and host access must still be secured by operator |
 | Network attacker modifies configuration | HTTPS platform TLS validation, bounded response, ECDSA signature, expiry and monotonic revision | Trust-key provisioning and real endpoint deployment are not yet exercised |
 | Redirect or credential leakage to another host | HTTPS-only client, rejects URL credentials/query/fragment and redirects | Endpoint must be owner-approved and correctly provisioned |
 | Malicious or downgraded update | Signed manifest, artifact SHA-256, expiry and monotonic version check | Downloader, PackageInstaller, successful-install callback and rollback are not integrated |
