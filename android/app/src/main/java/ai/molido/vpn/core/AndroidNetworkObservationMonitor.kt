@@ -13,13 +13,20 @@ class AndroidNetworkObservationMonitor(
     private val nowEpochMillis: () -> Long = System::currentTimeMillis
 ) {
     private var registered = false
+    @Volatile private var observedDefaultNetwork: Network? = null
     private val callback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) = publishIfDefault(network)
         override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
             if (network == connectivityManager.activeNetwork) publish(network, capabilities)
         }
         override fun onLost(network: Network) {
-            if (network == connectivityManager.activeNetwork) publish(connectivityManager.activeNetwork)
+            // activeNetwork may already be null or point at a replacement by the
+            // time onLost is delivered; compare against the last observed default.
+            if (network == observedDefaultNetwork) {
+                val current = connectivityManager.activeNetwork
+                observedDefaultNetwork = current
+                publish(current)
+            }
         }
     }
 
@@ -43,10 +50,12 @@ class AndroidNetworkObservationMonitor(
 
     private fun publish(network: Network?, supplied: NetworkCapabilities? = null) {
         if (network == null) {
+            observedDefaultNetwork = null
             onObservation(null)
             return
         }
         if (network != connectivityManager.activeNetwork && supplied == null) return
+        observedDefaultNetwork = network
         val caps = supplied ?: connectivityManager.getNetworkCapabilities(network)
         if (caps == null) {
             onObservation(null)
