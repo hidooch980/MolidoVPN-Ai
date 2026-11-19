@@ -108,7 +108,11 @@ def test_non_finite_configuration_numbers_are_rejected(tmp_path):
     credentials = client.post("/v1/devices/enroll", headers=admin, json={"label": "phone"}).json()
     response = client.put(
         f"/v1/devices/{credentials['device_id']}/configuration",
-        headers=admin,
-        json={"payload": {"unsafe": float("nan")}, "expires_at": int(time.time()) + 600},
+        headers={**admin, "Content-Type": "application/json"},
+        content=(
+            '{"payload":{"unsafe":NaN},"expires_at":'
+            + str(int(time.time()) + 600)
+            + '}'
+        ),
     )
     assert response.status_code == 422
