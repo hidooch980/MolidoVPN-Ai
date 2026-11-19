@@ -16,6 +16,30 @@ class VpnSessionController(
     private var activeOwner: EngineSlot? = null
     private var lastPathDecision: AdaptivePathDecision? = null
 
+    init {
+        adaptersBySlot.values.filterIsInstance<EngineFailureAwareAdapter>().forEach { aware ->
+            aware.setFailureListener {
+                reportEngineFailure(aware)
+            }
+        }
+    }
+
+    @Synchronized
+    private fun reportEngineFailure(adapter: EngineFailureAwareAdapter) {
+        val engine = adaptersBySlot.values
+            .filterIsInstance<EngineFailureAwareAdapter>()
+            .firstOrNull { it === adapter }
+            ?: return
+        val owner = activeOwner ?: return
+        val slot = (engine as? EngineAdapter)?.slot ?: return
+        if (owner != slot || activeSession == null) return
+        // Ignore intentional shutdown callbacks and duplicate DOWN notifications.
+        if (supervisor.snapshot().state != SessionState.RUNNING) return
+        if (supervisor.markFailed(owner)) {
+            record("ENGINE_SESSION_FAILED", "Engine reported unexpected shutdown; TUN ownership retained")
+        }
+    }
+
     @Synchronized
     fun connect(slot: EngineSlot, configuration: String): Boolean {
         if (activeSession != null) return activeOwner == slot && supervisor.snapshot().state == SessionState.RUNNING

@@ -27,6 +27,43 @@ class VpnSessionControllerTest {
     }
 
     @Test
+    fun unexpectedWireGuardEngineFailureTransitionsRunningSessionToFailed() {
+        val supervisor = SessionSupervisor()
+        var failureListener: (() -> Unit)? = null
+        val session = FakeSession()
+        val adapter = object : EngineAdapter, EngineFailureAwareAdapter {
+            override val slot = EngineSlot.WIREGUARD
+            override fun setFailureListener(listener: (() -> Unit)?) { failureListener = listener }
+            override fun start(configuration: String): EngineSession = session
+        }
+        val controller = VpnSessionController(supervisor, listOf(adapter))
+        assertTrue(controller.connect(EngineSlot.WIREGUARD, "in-memory-profile"))
+        assertEquals(SessionState.RUNNING, controller.snapshot().state)
+        failureListener?.invoke()
+        assertEquals(SessionState.FAILED, controller.snapshot().state)
+        assertEquals(EngineSlot.WIREGUARD, supervisor.currentOwner())
+        assertFalse(controller.connect(EngineSlot.TOR, "must-not-start"))
+        assertTrue(controller.prepareRecovery(0).action == RecoveryAction.SCHEDULE_RETRY)
+    }
+
+    @Test
+    fun duplicateOrLateEngineFailureCallbacksDoNotChangeStoppingOrIdleSession() {
+        val supervisor = SessionSupervisor()
+        var failureListener: (() -> Unit)? = null
+        val adapter = object : EngineAdapter, EngineFailureAwareAdapter {
+            override val slot = EngineSlot.WIREGUARD
+            override fun setFailureListener(listener: (() -> Unit)?) { failureListener = listener }
+            override fun start(configuration: String): EngineSession = FakeSession()
+        }
+        val controller = VpnSessionController(supervisor, listOf(adapter))
+        assertTrue(controller.connect(EngineSlot.WIREGUARD, "in-memory-profile"))
+        assertTrue(controller.disconnect())
+        failureListener?.invoke()
+        assertEquals(SessionState.IDLE, controller.snapshot().state)
+        assertNull(supervisor.currentOwner())
+    }
+
+    @Test
     fun networkLossBlocksNewStartUntilValidatedConnectivityReturns() {
         val supervisor = SessionSupervisor()
         val wireguard = FakeAdapter(EngineSlot.WIREGUARD)

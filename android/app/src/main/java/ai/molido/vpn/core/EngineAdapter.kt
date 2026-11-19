@@ -25,3 +25,10 @@ class EngineStartException(
     val cleanupSession: EngineSession?,
     cause: Throwable
 ) : Exception(message, cause)
+
+
+/** Optional adapter contract for asynchronous engine failures after successful startup. */
+interface EngineFailureAwareAdapter {
+    /** Listener must report unexpected engine failure only; intentional stop transitions are excluded. */
+    fun setFailureListener(listener: (() -> Unit)?)
+}

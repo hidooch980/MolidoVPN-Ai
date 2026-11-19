@@ -8,6 +8,7 @@ import ai.molido.vpn.core.EngineAdapter
 import ai.molido.vpn.core.EngineSession
 import ai.molido.vpn.core.EngineSlot
 import ai.molido.vpn.core.EngineStartException
+import ai.molido.vpn.core.EngineFailureAwareAdapter
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 
@@ -16,7 +17,7 @@ import java.nio.charset.StandardCharsets
  * GoBackend's manifest-merged GoBackend.VpnService is the one VPN service/TUN provider.
  * VpnSessionController is the sole application-level caller of this adapter.
  */
-class WireGuardEngineAdapter(context: Context) : EngineAdapter {
+class WireGuardEngineAdapter(context: Context) : EngineAdapter, EngineFailureAwareAdapter {
     override val slot: EngineSlot = EngineSlot.WIREGUARD
 
     private val lock = Any()
@@ -24,6 +25,11 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter {
         GoBackend(context.applicationContext)
     }
     private var activeTunnel: Tunnel? = null
+    @Volatile private var failureListener: (() -> Unit)? = null
+
+    override fun setFailureListener(listener: (() -> Unit)?) {
+        failureListener = listener
+    }
 
     override fun start(configuration: String): EngineSession = synchronized(lock) {
         check(activeTunnel == null) { "WireGuard session is already active" }
@@ -34,9 +40,15 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter {
         val parsed = Config.parse(ByteArrayInputStream(encoded))
         require(parsed.peers.isNotEmpty()) { "WireGuard configuration must contain at least one peer" }
 
+        @Volatile var startupComplete = false
+        @Volatile var intentionalStop = false
         val tunnel = object : Tunnel {
             override fun getName(): String = TUNNEL_NAME
-            override fun onStateChange(newState: Tunnel.State) = Unit
+            override fun onStateChange(newState: Tunnel.State) {
+                if (newState == Tunnel.State.DOWN && startupComplete && !intentionalStop) {
+                    failureListener?.invoke()
+                }
+            }
         }
 
         val session = object : EngineSession {
@@ -45,12 +57,18 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter {
             override fun stop() = synchronized(lock) {
                 if (stopped) return@synchronized
                 check(activeTunnel === tunnel) { "WireGuard session ownership mismatch" }
-                val resultingState = backend.setState(tunnel, Tunnel.State.DOWN, null)
-                check(resultingState == Tunnel.State.DOWN && backend.getState(tunnel) == Tunnel.State.DOWN) {
-                    "WireGuard backend did not enter DOWN state"
+                intentionalStop = true
+                try {
+                    val resultingState = backend.setState(tunnel, Tunnel.State.DOWN, null)
+                    check(resultingState == Tunnel.State.DOWN && backend.getState(tunnel) == Tunnel.State.DOWN) {
+                        "WireGuard backend did not enter DOWN state"
+                    }
+                    activeTunnel = null
+                    stopped = true
+                } catch (failure: Throwable) {
+                    intentionalStop = false
+                    throw failure
                 }
-                activeTunnel = null
-                stopped = true
             }
         }
 
@@ -61,6 +79,7 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter {
             check(resultingState == Tunnel.State.UP && backend.getState(tunnel) == Tunnel.State.UP) {
                 "WireGuard backend did not enter UP state"
             }
+            startupComplete = true
         } catch (failure: Throwable) {
             var cleanupFailure: Throwable? = null
             try {

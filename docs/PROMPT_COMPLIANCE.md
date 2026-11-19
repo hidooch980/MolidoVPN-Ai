@@ -44,7 +44,7 @@ Do not add a seventh engine. Each remaining engine needs license, dependency, se
 ## Corrective audit changes
 
 - Added `UpdateInstallAdmissionPolicy`, wired into `AndroidUpdateInstaller` before PackageInstaller session creation. JVM tests cover an existing pending session, equal/older version, invalid zero version and a strictly newer version.
-- Added `VpnSessionController.reportActiveEngineFailure()` and `prepareRecovery()`. The retry plan is calculated from the failed state; previous session cleanup must succeed before ownership is released. A failed cleanup preserves the owner and prevents another engine from starting.
+- Added `VpnSessionController.reportActiveEngineFailure()` and `prepareRecovery()`. WireGuard's asynchronous unexpected DOWN transition now reports into the controller; intentional stop and late/duplicate notifications are ignored. The retry plan is calculated from the failed state; previous session cleanup must succeed before ownership is released. A failed cleanup preserves the owner and prevents another engine from starting.
 - Added simulated controller tests for cleanup-before-retry, retained ownership after cleanup failure, waiting for validated connectivity, and rejecting unvalidated/stale network observations. This does not prove Android ConnectivityManager callbacks or real network handover.
 
 - Backoff test corrected to test the configured retry ceiling without weakening production retry limits.
@@ -67,7 +67,7 @@ Do not add a seventh engine. Each remaining engine needs license, dependency, se
 ## Latest CI evidence
 
 - [Android CI #106](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44563299701), source commit `aef9eb3874dc350144be5aab9d4c20cd129a679b`: completed successfully for the previous source.
-- [Android CI #108](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44565006192), source commit `81cfd105515fef55c070f9419c657b17ff1b9e0a`: validation is in progress; this commit must not be labelled CI Tested until Android unit tests, lint, release assembly and backend tests all complete successfully.
+- [Android CI #108](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44565006192), source commit `81cfd105515fef55c070f9419c657b17ff1b9e0a`: completed successfully; backend tests, Android unit tests, lint and release assembly passed. This does not include the later WireGuard callback wiring.
 - The backend audit also made signed configuration revision allocation transactional with SQLite `BEGIN IMMEDIATE` and added a regression test proving each successive publish receives a strictly increasing revision.
 - CI success is source/build evidence only. It is not Android Device Tested, Server Deployment Verified, or Production Verified.
 
@@ -78,7 +78,7 @@ Do not add a seventh engine. Each remaining engine needs license, dependency, se
 - Owner-approved permanent signing identity.
 - Production update download transport, physical PackageInstaller confirmation/install test, interrupted-install recovery and rollback verification.
 - Five unimplemented engines.
-- Automatic retry scheduling, concrete adapter failure callback wiring and process-death recovery.
+- Automatic retry scheduling, process-death recovery and device-level validation of asynchronous WireGuard state callbacks.
 - Full threat-model validation, dependency vulnerability scanning and penetration testing.
 - Stable Production release gates.
 
