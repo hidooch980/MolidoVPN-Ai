@@ -2,45 +2,90 @@
 
 Last updated: 2026-11-19
 
-Current reviewed baseline: strict single-owner reservation, multi-controller exclusion, startup cleanup retention, and controller retry behavior are implemented. Latest CI validation is green for the current source commit.
+Reviewed source baseline: `5bf794d45db5ca527a42a5daf588c1a87f711136`.
+This document distinguishes repository/CI evidence from Android-device and production evidence. A green CI run is not proof of a working VPN connection.
 
-## Repository baseline
+## Current delivery decision
 
-| Item | Status | Evidence |
+**Stable Production: BLOCKED.** No owner-approved permanent signing identity, physical-device test evidence, or deployed self-hosted endpoint is available. No APK is being distributed. Do not label this repository production-ready.
+
+## Repository and CI evidence
+
+| Item | Status | Evidence / boundary |
 |---|---|---|
-| Dedicated from-scratch branch | Source Implemented | `development/molido-vpn-ai-from-scratch` |
-| Master specification and architecture docs | Source Implemented | `docs/MASTER_SPEC.md`, `docs/ARCHITECTURE.md` |
-| Android Gradle application scaffold | Source Implemented | `android/app`, Gradle Kotlin DSL |
-| Fixed six-engine/eight-core inventory | Source Implemented | `ArchitectureInventory.kt` |
-| Session lifecycle coordinator | Source Implemented | `SessionSupervisor.kt`; IDLE/RESERVED/RUNNING/STOPPING/FAILED; claims are one-time and reject re-entrant or second-controller acquisition |
-| Central engine orchestration | Source Implemented | `VpnSessionController.kt`; one adapter invocation path |
-| Startup cleanup retention | Source Implemented | `EngineAdapter.kt`; `EngineStartException` carries a cleanup handle and controller retains ownership when cleanup is pending |
-| WireGuard Android dependency | Source Implemented | `com.wireguard.android:tunnel:1.0.20260102`, Apache-2.0 |
-| WireGuard engine adapter | Source Implemented | `WireGuardEngineAdapter.kt`; parses in-memory config and uses upstream GoBackend |
-| Single VPN service declaration | Source Implemented | Upstream GoBackend VPN service is the only intended TUN provider |
-| Controller and lifecycle tests | CI Tested | Coverage includes exclusive engine ownership, startup rollback, retained cleanup ownership, retry, duplicate adapter rejection, and idempotent idle disconnect; latest revision passed run #39 |
-| CI dependency retry | Source Implemented | Three bounded attempts for test, lint, and release assembly |
-| Latest verified CI | CI Tested | Run #39 passed unit tests, Android lint, and release-variant assembly on commit `cbec3dfcc25d8f59fc492415d9f5f293e8b9110a`; CI assembly is validation only and is not a distributed APK |
-| WireGuard packet data plane | Source Implemented | Upstream GoBackend integration is present; no device packet-flow proof |
-| Android TUN integration | Source Implemented | Delegated to upstream GoBackend VPN service; device validation pending |
-| Other five engine data planes | Not Implemented | Inventory slots only |
-| Self-hosted backend/server | Server Deployment Required | No server is provisioned |
-| Stable signed APK | Blocked | No owner-confirmed permanent signing identity and no release evidence |
-| Physical Android device verification | Not Implemented | No device test evidence |
-| Production verification | Blocked | Requires a real device and deployed endpoint |
+| Dedicated from-scratch development branch | Source Implemented | `development/molido-vpn-ai-from-scratch` |
+| Master specification and architecture | Source Implemented | `docs/MASTER_SPEC.md`, `docs/ARCHITECTURE.md` |
+| Android native application scaffold | Source Implemented | `android/app`; native Android UI |
+| Fixed six-engine / eight-core inventory | Source Implemented | `ArchitectureInventory.kt`; inventory does not imply implementation |
+| Session lifecycle coordinator | Source Implemented | `SessionSupervisor.kt`; exclusive claim, explicit states, retained ownership |
+| Central engine orchestration | Source Implemented | `VpnSessionController.kt`; one app-level adapter invocation path |
+| WireGuard upstream Android dependency | Source Implemented | `com.wireguard.android:tunnel:1.0.20260102`; Apache-2.0 |
+| WireGuard adapter | Source Implemented | In-memory config parsing and upstream `GoBackend` integration |
+| Controller/lifecycle unit tests | CI Tested | Latest CI run #40 passed unit tests on the exact commit listed below |
+| Android lint | CI Tested | Latest CI run #40 passed `:android:app:lintDebug` |
+| Release-variant assembly | CI Built | Latest CI run #40 passed `:android:app:assembleRelease`; CI-only output, not signed owner release or distribution |
+| Latest CI run | CI Tested | Run #40, ID `44465235475`, commit `5bf794d45db5ca527a42a5daf588c1a87f711136`; success |
+| CI run #40 artifacts | Not Published | No APK distribution is claimed |
+| Physical Android validation | Not Implemented | No device test evidence |
+| Self-hosted backend/server | Server Deployment Required | No VPS/server has been provisioned |
+| Stable signed APK | Blocked | Permanent signing identity not confirmed by owner |
+| Production verification | Blocked | Requires device, real endpoint, and complete release gates |
 
-## Important technical boundary
+CI run: https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44465235475
 
-The WireGuard adapter uses the upstream GoBackend, which internally establishes the Android VPN interface and owns packet routing. The app-level controller is the only caller of the adapter. The application must not add a second VpnService or create another TUN. This source integration is not proof of a successful handshake or traffic flow.
+## Six-engine implementation matrix
 
-## Release gates
+| Approved engine slot | Status | Evidence / next gate |
+|---|---|---|
+| WireGuard | Source Implemented | Upstream GoBackend adapter exists; Android packet-flow and server tests remain outstanding |
+| AmneziaWG | Not Implemented | Inventory slot only |
+| V2Ray/Xray | Not Implemented | Inventory slot only |
+| Psiphon | Not Implemented | Inventory slot only |
+| Tor | Not Implemented | Inventory slot only |
+| MASQUE/WARP-compatible | Not Implemented | Inventory slot only |
 
-A Stable Production release is blocked until all are true:
-1. Permanent signing identity is confirmed and securely backed up by the owner.
-2. Release workflow builds the production variant and never distributes debug/test variants.
-3. Static analysis, dependency/license checks, unit/integration tests, and artifact integrity checks pass.
-4. Physical Android device validates connection, traffic flow, DNS, IPv4, IPv6, leak prevention, kill-switch policy, reconnect, and recovery.
-5. A real self-hosted endpoint is deployed and its operational ownership is documented.
-6. Release notes, SBOM/dependency inventory, checksums, and rollback guidance are prepared.
+No seventh engine is authorized. A slot is not an implementation or a promise of compatibility.
 
-A green CI check proves only the named automated checks for the exact commit. It does not imply Android Device Tested or Production Verified.
+## Eight-core implementation matrix
+
+| Complementary core | Status | Evidence / next gate |
+|---|---|---|
+| Session & TUN Supervisor | Source Implemented | Exclusive lifecycle ownership and controller tests |
+| Network Intelligence | Not Implemented | No real network measurement pipeline |
+| Adaptive Path & Policy | Not Implemented | No validated adaptive selection; no fabricated measurements |
+| Security & Privacy | Source Implemented | Initial privacy boundaries and in-memory profile flow; full threat model/security verification remains |
+| Resilience & Recovery | Source Implemented | Lifecycle cleanup retry behavior exists; device/network recovery is unverified |
+| Diagnostics & Observability | Not Implemented | No production diagnostics pipeline or telemetry service |
+| Control Plane & Configuration | Not Implemented | No backend/control-plane implementation |
+| Update & Integrity | Not Implemented | No signed update metadata, verified updater, or rollback implementation |
+
+## WireGuard and Android technical boundary
+
+- The WireGuard adapter delegates VPN interface creation and packet routing to upstream `GoBackend`.
+- The upstream manifest-merged `GoBackend.VpnService` is the sole intended VPN service/TUN provider. Do not add a second service or create a second TUN.
+- The app-level `VpnSessionController` is the only application entry point for adapter start/stop.
+- WireGuard configuration is parsed in memory with a 64 KiB input limit; this UI flow does not persist or log the profile.
+- A successful backend start in source is not evidence of peer handshake, internet traffic, DNS correctness, IPv4/IPv6 routing, or leak prevention.
+- Five other engine slots and most complementary cores remain unimplemented.
+
+## Release gates — all required
+
+1. Owner confirms a permanent signing identity and securely backs it up. Never generate or replace it without explicit approval.
+2. A production-only release workflow is reviewed; no Debug/Beta/Alpha/Preview/Test APK is distributed to the owner.
+3. Static analysis, dependency/license/security review, unit and integration tests, artifact integrity, SBOM, checksums, and release notes are complete.
+4. A physical Android device validates permission flow, connection, real traffic, DNS, IPv4, IPv6, leak prevention, kill-switch policy, reconnect, process death, and recovery.
+5. An authorized real self-hosted endpoint is deployed; ownership, key rotation, backup, monitoring, upgrade, and rollback are documented.
+6. Stable release signing, installation/update behavior, and rollback are verified end-to-end.
+
+Until every applicable gate is evidenced, keep Stable Production blocked. GitHub Actions is CI/CD only; it is not a VPN server, relay, backend, or data-plane endpoint.
+
+## Next execution order
+
+1. Obtain an authorized WireGuard profile and endpoint from the project owner/operator.
+2. Run the Android app on a physical device and record real connection, traffic, DNS, IPv4/IPv6, leak, kill-switch, and recovery results.
+3. Fix any observed device-level defects before adding more engines.
+4. Implement the remaining cores and engine slots one at a time with license/security review and reproducible tests.
+5. Build and deploy the self-hosted control plane/server on explicitly approved infrastructure.
+6. Complete signing and release gates, then publish only Stable Production.
+
+No infrastructure, paid service, domain, VPS, private key, or signing identity is created by this repository update.
