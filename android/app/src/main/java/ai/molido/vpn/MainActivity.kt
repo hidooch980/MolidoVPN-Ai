@@ -329,7 +329,11 @@ class MainActivity : ComponentActivity() {
             .setPositiveButton("لغو رضایت و حذف") { _, _ ->
                 try {
                     molidoApp.secureProfileStore.revokeConsentAndDelete()
-                    Toast.makeText(this, "رضایت لغو و پروفایل ذخیره‌شده حذف شد.", Toast.LENGTH_LONG).show()
+                    profileText = null
+                    profileView.text = "پروفایل ذخیره‌شده حذف شد"
+                    connectButton.isEnabled = false
+                    Toast.makeText(this, "رضایت لغو شد؛ داده رمزگذاری‌شده، کلید اختصاصی و نسخه فعال در حافظه حذف شدند.", Toast.LENGTH_LONG).show()
+                    renderState()
                 } catch (_: Exception) {
                     Toast.makeText(this, "حذف کامل انجام نشد؛ وضعیت ذخیره‌سازی را بررسی کنید.", Toast.LENGTH_LONG).show()
                 }
