@@ -17,6 +17,7 @@ class TunOwnershipCoordinatorGenerationTest {
         assertFalse(coordinator.markBackendActive(old))
         assertFalse(coordinator.beginStop(old))
         assertFalse(coordinator.confirmBackendStopped(old))
+        assertFalse(coordinator.confirmServiceTunClosed(old))
         assertEquals(current.generation, coordinator.snapshot().generation)
         assertEquals(TunLeaseState.RESERVED, coordinator.snapshot().state)
         assertEquals(EngineSlot.WIREGUARD, coordinator.snapshot().owner)
