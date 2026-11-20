@@ -3,6 +3,7 @@ package ai.molido.vpn
 import android.app.Application
 import android.net.ConnectivityManager
 import ai.molido.vpn.core.AndroidNetworkObservationMonitor
+import ai.molido.vpn.core.AndroidSecureProfileStore
 import ai.molido.vpn.core.AndroidSecureTrustStore
 import ai.molido.vpn.core.AndroidUpdateTrust
 import ai.molido.vpn.core.AndroidUpdateInstaller
@@ -39,6 +40,7 @@ class MolidoVpnApplication : Application() {
         )
     }
     val diagnostics = DiagnosticsObservabilityCore(enabled = false)
+    val secureProfileStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { AndroidSecureProfileStore(this) }
     val trustStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { AndroidSecureTrustStore(this) }
     val controlPlaneClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { ControlPlaneClient(trustStore) }
     val updateTrust by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { AndroidUpdateTrust(this, trustStore) }
