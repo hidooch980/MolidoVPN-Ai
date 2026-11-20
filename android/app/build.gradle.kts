@@ -1,5 +1,10 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
+
 val releaseKeystorePath = System.getenv("ANDROID_KEYSTORE_FILE")
 val releaseStorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
 val releaseKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
@@ -10,11 +15,6 @@ val releaseSigningConfigured = listOf(
     releaseKeyAlias,
     releaseKeyPassword
 ).all { !it.isNullOrBlank() }
-
-plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-}
 
 android {
     namespace = "ai.molido.vpn"
