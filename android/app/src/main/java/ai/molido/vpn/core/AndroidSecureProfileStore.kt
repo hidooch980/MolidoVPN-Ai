@@ -110,7 +110,7 @@ class AndroidSecureProfileStore(context: Context) {
         val encrypted = encoded.copyOfRange(IV_BYTES, encoded.size)
         try {
             val cipher = Cipher.getInstance(TRANSFORMATION)
-            cipher.init(Cipher.DECRYPT_MODE, encryptionKey(), GCMParameterSpec(TAG_BITS, iv))
+            cipher.init(Cipher.DECRYPT_MODE, encryptionKey(createIfMissing = false), GCMParameterSpec(TAG_BITS, iv))
             cipher.updateAAD(AAD)
             return cipher.doFinal(encrypted)
         } finally {
@@ -119,9 +119,10 @@ class AndroidSecureProfileStore(context: Context) {
         }
     }
 
-    private fun encryptionKey(): SecretKey {
+    private fun encryptionKey(createIfMissing: Boolean = true): SecretKey {
         val store = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
         (store.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
+        check(createIfMissing) { "The Android Keystore profile key is missing; refusing to replace it during decryption" }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
         generator.init(
             KeyGenParameterSpec.Builder(
