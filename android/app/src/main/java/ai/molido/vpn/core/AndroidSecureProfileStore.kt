@@ -41,12 +41,31 @@ class AndroidSecureProfileStore(context: Context) {
     @Synchronized
     fun saveProfile(profile: ByteArray) {
         check(hasUserConsent()) { "Profile persistence has not been approved by the user" }
+        persistEncryptedProfile(profile, includeConsent = false)
+    }
+
+    /**
+     * Atomically stores explicit consent and the encrypted profile in one
+     * SharedPreferences commit. Encryption completes before either value changes.
+     * A failed encryption therefore cannot leave a consent-only partial state.
+     */
+    @Synchronized
+    fun saveProfileWithConsent(profile: ByteArray, userConfirmed: Boolean) {
+        require(userConfirmed) { "Explicit user confirmation is required" }
+        persistEncryptedProfile(profile, includeConsent = true)
+    }
+
+    private fun persistEncryptedProfile(profile: ByteArray, includeConsent: Boolean) {
         require(profile.isNotEmpty() && profile.size <= MAX_PROFILE_BYTES) { "Invalid profile size" }
         val encrypted = encrypt(profile)
-        check(preferences.edit()
-            .putString(PROFILE_KEY, Base64.encodeToString(encrypted, Base64.NO_WRAP))
-            .commit()) { "Unable to persist encrypted profile" }
-        encrypted.fill(0)
+        try {
+            val editor = preferences.edit()
+                .putString(PROFILE_KEY, Base64.encodeToString(encrypted, Base64.NO_WRAP))
+            if (includeConsent) editor.putBoolean(CONSENT_KEY, true)
+            check(editor.commit()) { "Unable to persist encrypted profile" }
+        } finally {
+            encrypted.fill(0)
+        }
     }
 
     /** Returns a new plaintext buffer; caller must clear it after use. */
@@ -55,7 +74,11 @@ class AndroidSecureProfileStore(context: Context) {
         if (!hasUserConsent()) return null
         val encoded = preferences.getString(PROFILE_KEY, null) ?: return null
         val ciphertext = Base64.decode(encoded, Base64.NO_WRAP)
-        return decrypt(ciphertext)
+        return try {
+            decrypt(ciphertext)
+        } finally {
+            ciphertext.fill(0)
+        }
     }
 
     /** Revokes consent, removes ciphertext, and deletes only this store's key. */
@@ -81,10 +104,15 @@ class AndroidSecureProfileStore(context: Context) {
         require(encoded.size > IV_BYTES + TAG_BYTES) { "Stored profile is malformed" }
         val iv = encoded.copyOfRange(0, IV_BYTES)
         val encrypted = encoded.copyOfRange(IV_BYTES, encoded.size)
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.DECRYPT_MODE, encryptionKey(), GCMParameterSpec(TAG_BITS, iv))
-        cipher.updateAAD(AAD)
-        return cipher.doFinal(encrypted)
+        try {
+            val cipher = Cipher.getInstance(TRANSFORMATION)
+            cipher.init(Cipher.DECRYPT_MODE, encryptionKey(), GCMParameterSpec(TAG_BITS, iv))
+            cipher.updateAAD(AAD)
+            return cipher.doFinal(encrypted)
+        } finally {
+            iv.fill(0)
+            encrypted.fill(0)
+        }
     }
 
     private fun encryptionKey(): SecretKey {
