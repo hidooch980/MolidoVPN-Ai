@@ -67,6 +67,40 @@ This is only a process-isolation and IPC-liveness scaffold:
 - Keep this engine blocked until a documented supported integration path and terms are confirmed. Accountless WireGuard enrollment is a separate optional provider path and must not be misrepresented as a full MASQUE implementation.
 - Acceptance: documented supported API/SDK and terms, explicit external-provider disclosure and consent, local key handling, provider refusal/rate-limit handling, TUN/DNS/data-plane/device tests.
 
+## Updated upstream review (2026-11-20)
+
+### Tor daemon and TUN-to-SOCKS bridge
+
+- Guardian Project `tor-android` provides an Android `TorService` and native `libtor.so`; its README documents the Guardian Project Maven repository and `jtorctl`. The Tor daemon is a SOCKS endpoint, not a full-device VPN by itself.
+- `TorService` exposes explicit START/STOP actions, status broadcasts, a bindable `TorControlConnection`, and a per-app `torrc` path. It also documents process-global Tor state and a single active `tor_run_main()` per process. Keep Tor in its own dedicated process and never instantiate multiple Tor runtimes there.
+- For the packet bridge, the reviewed candidate is upstream `heiher/hev-socks5-tunnel` (MIT). Its Android AAR exposes `hev.htproxy.TProxyService.TProxyStartService(config_path, fd)`, `TProxyStopService()`, `TProxyIsRunning()`, and `TProxyGetStats()`. It supports IPv4/IPv6, TCP and UDP forwarding. Pin a signed upstream release and verify its asset digest before vendoring or consuming the AAR.
+- Still required: a dedicated `VpnService` that alone calls `Builder.establish()`, passes a duplicated/owned TUN descriptor to the bridge, and waits for bridge-stop acknowledgement before closing the descriptor. The bridge must point only to Tor's loopback SOCKS listener. Test UDP ASSOCIATE support, DNS mapping, IPv6, MTU, socket protection, and fail-closed behavior. No Tor VPN adapter is registered until these checks pass.
+
+### Xray / libXray current integration contract
+
+- Official `XTLS/libXray` currently documents `Invoke(requestJSON)` with `apiVersion: 3`; `runXray`, `stopXray`, `getXrayState`, validation and conversion methods are exposed through the structured API. Pin a verified release/tag and its matching Android artifact; do not assume API stability.
+- The official README explicitly prohibits loading independently built Go runtimes in one process. The isolated `:engine_xray` process is therefore mandatory. The Android process must own the TUN descriptor and hand a duplicated descriptor to Xray using the documented `env.xray.tun.fd` mechanism; Xray closes only its duplicate.
+- libXray's `SetDNS`/`ResetDNS` alter the process-wide Go resolver. Call `SetDNS` before start and `ResetDNS` only after a confirmed `stopXray`; serialize this with engine lifecycle. `runXray` success means the core started, not that the tunnel routes traffic.
+- A production adapter still needs ABI-pinned AAR builds, JNI/Java API binding verified against the selected release, bounded configuration parsing, response parsing, start/stop timeouts, remote cleanup acknowledgement, and TCP/UDP/DNS/leak/device tests.
+
+### AmneziaWG official source build
+
+- The official `amnezia-vpn/amneziawg-android` repository is Apache-2.0 and its README builds with `git clone --recurse-submodules` followed by `./gradlew assembleRelease`.
+- The tunnel module compiles native targets `libwg-go.so`, `libwg.so`, and `libwg-quick.so` through CMake. Its `.gitmodules` includes `amneziawg-tools` and `termux-elf-cleaner`; the tunnel build also depends on the `libwg-go` source tree. Pin the parent commit and every recursive submodule commit and audit each license independently.
+- Do not copy the upstream UI or create a second VPN service. Extract/build only the tunnel component in a controlled, reproducible CI job, then integrate it behind the dedicated process and single TUN-owner contract. Preserve Amnezia-specific obfuscation parameters; ordinary WireGuard profiles are not interchangeable.
+
+### Psiphon license decision
+
+- The official `Psiphon-Labs/psiphon-tunnel-core` repository identifies GPL-3.0 and includes the GPLv3 license text. This is a confirmed license constraint, not a pending guess.
+- Integration remains blocked until the product owner explicitly chooses either (a) GPL-3.0-compliant distribution, including complete corresponding source and notices for the covered combined work as legally applicable, or (b) a written commercial license/exception from the rights holder. This engineering note is not legal advice.
+- If neither option is accepted, do not bundle the core. Keep the adapter unregistered and the engine unavailable.
+
+### MASQUE / Cloudflare WARP
+
+- Current official Cloudflare docs describe the consumer WARP app using MASQUE and/or WireGuard, while Cloudflare One documents its own client daemon, device enrollment, orchestration and policy model.
+- No supported public third-party Android embedding SDK/API for the consumer client was established in this review. The existence of official WARP apps and public protocol documentation does not grant permission to impersonate the client or use private enrollment/orchestration endpoints.
+- Revisit only if Cloudflare publishes an embedding SDK/API and terms that explicitly permit this use, or if a separately reviewed independent implementation can lawfully interoperate under published specifications and service terms. Do not present an unofficial client as Cloudflare-supported.
+
 ## Proposed implementation order
 
 1. Finish WireGuard physical-device verification and cleanup/diagnostics.
