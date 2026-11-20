@@ -165,7 +165,6 @@ class AndroidSecureProfileStoreTest {
             // expected
         }
     }
-\n
     @Test
     fun failedReplacementLeavesPreviouslyCommittedCiphertextReadable() {
         val original = "previous-valid-profile".toByteArray()
