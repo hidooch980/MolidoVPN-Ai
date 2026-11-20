@@ -34,6 +34,8 @@ class MolidoVpnApplication : Application() {
     /** Live capability list; entries are derived from adapters actually wired at runtime. */
     lateinit var engineCapabilities: List<EngineCapability>
         private set
+    lateinit var wireGuardAdapter: WireGuardEngineAdapter
+        private set
 
     private val observation = AtomicReference<NetworkObservation?>(null)
     private val selectedNetworkPolicy = AtomicReference(NetworkPolicy.ANY_VALIDATED)
@@ -75,7 +77,8 @@ class MolidoVpnApplication : Application() {
         vpnExecutor = Executors.newSingleThreadExecutor { task ->
             Thread(task, "molido-vpn-control").apply { isDaemon = true }
         }
-        val registeredAdapters = listOf(WireGuardEngineAdapter(this))
+        wireGuardAdapter = WireGuardEngineAdapter(this)
+        val registeredAdapters = listOf(wireGuardAdapter)
         engineCapabilities = EngineCapabilityCatalog.build(registeredAdapters)
         vpnSessions = VpnSessionController(
             supervisor = SessionSupervisor(),
