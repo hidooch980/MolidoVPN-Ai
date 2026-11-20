@@ -32,6 +32,44 @@ class TunOwnershipCoordinatorTest {
     }
 
     @Test
+    fun wireGuardBackendLeaseIsSharedAndReleasedOnlyAfterConfirmedDown() {
+        val coordinator = TunOwnershipCoordinator()
+        val lease = coordinator.acquireBackendManaged(EngineSlot.WIREGUARD)!!
+        assertEquals(TunLeaseTransport.BACKEND_MANAGED, lease.transport)
+        assertTrue(coordinator.markBackendActive(lease))
+        assertEquals(TunLeaseState.ACTIVE, coordinator.snapshot().state)
+        assertNull(coordinator.acquireBackendManaged(EngineSlot.TOR))
+        assertFalse(coordinator.confirmBackendStopped(lease))
+        assertTrue(coordinator.beginStop(lease))
+        assertTrue(coordinator.confirmBackendStopped(lease))
+        assertEquals(TunLeaseState.IDLE, coordinator.snapshot().state)
+        assertNull(coordinator.snapshot().transport)
+        assertNotNull(coordinator.acquireBackendManaged(EngineSlot.TOR))
+    }
+
+    @Test
+    fun failedWireGuardStartupMustConfirmBackendDownBeforeReleasingLease() {
+        val coordinator = TunOwnershipCoordinator()
+        val lease = coordinator.acquireBackendManaged(EngineSlot.WIREGUARD)!!
+        assertTrue(coordinator.beginStop(lease))
+        assertFalse(coordinator.acquireBackendManaged(EngineSlot.TOR).let { it != null })
+        assertTrue(coordinator.confirmBackendStopped(lease))
+        assertNotNull(coordinator.acquireBackendManaged(EngineSlot.TOR))
+    }
+
+    @Test
+    fun backendManagedLeaseCannotUseDescriptorHandoffAcknowledgements() {
+        val coordinator = TunOwnershipCoordinator()
+        val lease = coordinator.acquireBackendManaged(EngineSlot.WIREGUARD)!!
+        assertTrue(coordinator.markBackendActive(lease))
+        assertTrue(coordinator.beginStop(lease))
+        assertFalse(coordinator.acknowledgeEngineCleanup(lease, 1234))
+        assertFalse(coordinator.confirmServiceTunClosed(lease))
+        assertEquals(TunLeaseState.STOPPING, coordinator.snapshot().state)
+        assertTrue(coordinator.confirmBackendStopped(lease))
+    }
+
+    @Test
     fun descriptorHandoffAndCleanupAckAreRequiredBeforeRelease() {
         val coordinator = TunOwnershipCoordinator()
         val lease = coordinator.acquire(EngineSlot.V2RAY_XRAY)!!
