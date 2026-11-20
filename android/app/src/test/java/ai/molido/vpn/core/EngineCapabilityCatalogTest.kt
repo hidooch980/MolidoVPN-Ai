@@ -59,4 +59,31 @@ class EngineCapabilityCatalogTest {
             statusDetail = "invalid"
         )
     }
+
+    @Test
+    fun externalLegalAndProtocolBlockersAreExplicitAndNotSelectable() {
+        val catalog = EngineCapabilityCatalog.build(adapters = emptyList())
+        val psiphon = catalog.single { it.slot == EngineSlot.PSIPHON }
+        val warp = catalog.single { it.slot == EngineSlot.MASQUE_WARP }
+
+        assertEquals(EngineReadiness.BLOCKED, psiphon.readiness)
+        assertFalse(psiphon.selectable)
+        assertTrue(psiphon.statusDetail.contains("GPL-3.0"))
+
+        assertEquals(EngineReadiness.BLOCKED, warp.readiness)
+        assertFalse(warp.selectable)
+        assertTrue(warp.statusDetail.contains("SDK/API"))
+    }
+
+    @Test
+    fun explicitBlockReasonOverridesAnOtherwiseRegisteredAdapter() {
+        val catalog = EngineCapabilityCatalog.build(
+            adapters = listOf(FakeAdapter(EngineSlot.WIREGUARD)),
+            blockedReasons = mapOf(EngineSlot.WIREGUARD to "operator block")
+        )
+        val entry = catalog.single { it.slot == EngineSlot.WIREGUARD }
+        assertEquals(EngineReadiness.BLOCKED, entry.readiness)
+        assertFalse(entry.selectable)
+    }
+
 }
