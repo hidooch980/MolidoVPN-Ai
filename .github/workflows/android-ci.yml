@@ -98,7 +98,9 @@ jobs:
   android-keystore-instrumentation:
     name: Android Keystore instrumentation (emulator)
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 55
+    env:
+      ANDROID_EMULATOR_WAIT_TIME_BEFORE_KILL: "60"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -111,27 +113,67 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install emulator image and create AVD
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-35" \
+            "emulator" \
+            "system-images;android-35;google_apis;x86_64"
+          echo "no" | avdmanager create avd \
+            --name molido-ci-api35 \
+            --package "system-images;android-35;google_apis;x86_64" \
+            --device pixel_2
+      - name: Boot emulator with software acceleration
+        shell: bash
+        run: |
+          set -euo pipefail
+          adb start-server
+          nohup emulator -avd molido-ci-api35 \
+            -no-window -gpu swiftshader_indirect -no-snapshot -noaudio \
+            -no-boot-anim -camera-back none -no-metrics -accel off \
+            > "$RUNNER_TEMP/molido-emulator.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/molido-emulator.pid"
+          adb wait-for-device
+          booted=0
+          for attempt in $(seq 1 900); do
+            state="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+            if [ "$state" = "1" ]; then
+              booted=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$booted" -ne 1 ]; then
+            echo "Emulator did not complete boot within 900 seconds."
+            tail -n 250 "$RUNNER_TEMP/molido-emulator.log" || true
+            exit 1
+          fi
+          adb shell getprop ro.build.version.sdk
+          adb shell getprop sys.boot_completed
+          adb devices -l
       - name: Run Android Keystore instrumentation tests
-        uses: reactivecircus/android-emulator-runner@v2
-        env:
-          # The runner has no KVM; Android Emulator requires explicit opt-in to TCG software CPU emulation.
-          ANDROID_I_WANT_MY_TCG: "yes"
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          channel: stable
-          emulator-boot-timeout: 900
-          disable-animations: true
-          # GitHub-hosted Ubuntu runners may not expose usable KVM to the emulator.
-          # Force software acceleration so boot does not depend on nested virtualization.
-          disable-linux-hw-accel: true
-          cores: 2
-          ram-size: 3072
-          heap-size: 512
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          script: gradle --no-daemon :android:app:connectedDebugAndroidTest
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :android:app:connectedDebugAndroidTest
+      - name: Collect emulator diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          adb devices -l || true
+          adb logcat -d -t 1200 || true
+          tail -n 300 "$RUNNER_TEMP/molido-emulator.log" || true
+      - name: Stop emulator
+        if: always()
+        shell: bash
+        run: |
+          adb emu kill || true
 
   signed-release:
     name: Build and verify signed Android release
