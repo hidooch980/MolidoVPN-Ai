@@ -11,6 +11,15 @@ Status: engineering decision record; this document does not mark any additional 
 - The VPN service process must be the sole owner of the active TUN descriptor. Stop/cleanup must be acknowledged before another engine can start. The main process must never report a session as released while the remote engine still owns TUN resources.
 - Engine readiness is never inferred from CI build success, a service process being alive, or a VPN interface being UP. Track handshake, traffic counters, DNS, data-plane reachability, and physical-device verification separately.
 
+## Native process-isolation foundation (scaffold only)
+
+The Android manifest now declares private :engine_xray, :engine_amneziawg, and :engine_psiphon service processes. Their shared Messenger endpoint reports its engine slot, process ID, and explicit NOT_IMPLEMENTED readiness. Instrumentation tests assert that each service PID differs from the app PID.
+
+This is only a process-isolation and IPC-liveness scaffold:
+- These services are not VPNServices and do not create or own a TUN descriptor.
+- They do not load native libraries, accept profiles, or start an engine.
+- No adapter is registered for Xray, AmneziaWG, or Psiphon; all remain unavailable in the UI.
+- The next engineering gate is a single designated VPNService/TUN owner with safe descriptor handoff and acknowledged remote stop/cleanup. That requires a deliberate migration away from relying on WireGuard GoBackend's manifest-merged VPNService as the sole TUN provider before the other engines can be activated.
 ## Engine-specific gates
 
 ### WireGuard (existing engine; hardening in progress)
