@@ -165,52 +165,55 @@ class MainActivity : ComponentActivity() {
         val engineCard = card()
         engineCard.addView(label("موتورهای VPN", 17f, AQUA, true))
         engineCard.addView(label("فقط موتورهای پیاده‌سازی و آزمایش‌شده قابل انتخاب هستند.", 12f, MUTED, false))
-        engineCard.addView(engineRow("WireGuard", "پیاده‌سازی شده • نیازمند تست دستگاه", true, wireGuard = true))
-        engineCard.addView(engineRow("AmneziaWG", "هنوز پیاده‌سازی نشده", false))
-        engineCard.addView(engineRow("V2Ray / Xray", "هنوز پیاده‌سازی نشده", false))
-        engineCard.addView(engineRow("Psiphon", "هنوز پیاده‌سازی نشده", false))
-        engineCard.addView(engineRow("Tor", "هنوز پیاده‌سازی نشده", false))
-        engineCard.addView(engineRow("MASQUE / WARP", "هنوز پیاده‌سازی نشده", false))
+        molidoApp.engineCapabilities.forEach { capability ->
+            val status = when (capability.readiness) {
+                ai.molido.vpn.core.EngineReadiness.NOT_IMPLEMENTED -> "هنوز پیاده‌سازی نشده"
+                ai.molido.vpn.core.EngineReadiness.SOURCE_IMPLEMENTED -> "کد موجود • تست اتصال روی دستگاه لازم است"
+                ai.molido.vpn.core.EngineReadiness.DEVICE_TESTED -> "روی دستگاه آزمایش شده"
+                ai.molido.vpn.core.EngineReadiness.PRODUCTION_VERIFIED -> "تأیید تولید"
+            }
+            engineCard.addView(engineRow(
+                capability.displayName,
+                status,
+                capability.selectable,
+                wireGuard = capability.slot == EngineSlot.WIREGUARD
+            ))
+        }
         page.addView(engineCard, sectionParams())
 
         val routingCard = card()
         routingCard.addView(label("انتخاب مسیر اتصال", 17f, AQUA, true))
         routingCard.addView(label("سرویس‌دهنده و کشور مقصد را از فهرست‌ها انتخاب کنید. انتخاب، اتصال خودکار ایجاد نمی‌کند.", 12f, MUTED, false))
         routingCard.addView(label("سرویس‌دهنده", 13f, WHITE, true).apply { setPadding(0, dp(12), 0, dp(5)) })
-        providerSpinner = dropdown(listOf(
-            "WireGuard • پروفایل شخصی",
-            "Cloudflare WARP • در حال پیاده‌سازی",
-            "Tor • نیازمند ادغام موتور",
-            "Psiphon • نیازمند ادغام موتور"
-        ))
+        val selectableCapabilities = molidoApp.engineCapabilities.filter { it.selectable }
+        providerSpinner = dropdown(selectableCapabilities.map { it.displayName })
         routingCard.addView(providerSpinner, LinearLayout.LayoutParams(-1, dp(50)))
         routingCard.addView(label("کشور مقصد", 13f, WHITE, true).apply { setPadding(0, dp(12), 0, dp(5)) })
-        countrySpinner = dropdown(listOf(
-            "خودکار / تعیین توسط سرویس",
-            "آلمان", "آمریکا", "هلند", "فرانسه", "بریتانیا", "سوئیس",
-            "سوئد", "کانادا", "ژاپن", "سنگاپور", "ترکیه", "استرالیا"
-        ))
+        countrySpinner = dropdown(listOf("کشور در پروفایل / سرویس تعیین می‌شود"))
         routingCard.addView(countrySpinner, LinearLayout.LayoutParams(-1, dp(50)))
+        countrySpinner.isEnabled = false
         providerStatusView = label(
-            "WireGuard فعلاً فقط از کشور/میزبان داخل پروفایل واردشده استفاده می‌کند؛ انتخاب کشور در این فهرست هنوز مسیر سرور را تغییر نمی‌دهد.",
+            "فقط موتورهای دارای آداپتور ثبت‌شده در فهرست انتخاب هستند. کشور مقصد تا دریافت موجودی معتبر از سرویس‌دهنده قابل انتخاب نیست.",
             12f, GOLD, false
         ).apply { setPadding(0, dp(10), 0, 0) }
         routingCard.addView(providerStatusView)
         providerSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
             override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
-                providerStatusView.text = when (position) {
-                    0 -> "WireGuard: اتصال فقط با پروفایل معتبر و واردشده انجام می‌شود. کشور خروجی را سرور همان پروفایل تعیین می‌کند."
-                    1 -> "Cloudflare WARP: مسیر مصرف‌کننده کشور خروجی قابل انتخاب ارائه نمی‌کند؛ ادغام رسمی/قابل اتکا هنوز انجام نشده است."
-                    2 -> "Tor: پروژه Tor قابلیت انتخاب کشور خروجی دارد، اما موتور Tor داخل Molido هنوز پیاده‌سازی نشده است."
-                    else -> "Psiphon: حساب شخصی معمولاً لازم نیست، اما ادغام پشتیبانی‌شده داخل Molido هنوز آماده نیست."
+                val capability = selectableCapabilities.getOrNull(position)
+                providerStatusView.text = capability?.statusDetail ?: "هیچ موتور قابل انتخابی ثبت نشده است."
+                countrySpinner.isEnabled = capability?.countrySelectionSupported == true &&
+                    capability.availableCountries.isNotEmpty()
+                val countryOptions = capability?.availableCountries.orEmpty()
+                val options = listOf("کشور در پروفایل / سرویس تعیین می‌شود") + countryOptions
+                (countrySpinner.adapter as? ArrayAdapter<String>)?.let { adapter ->
+                    adapter.clear()
+                    adapter.addAll(options)
+                    adapter.notifyDataSetChanged()
                 }
-                countrySpinner.isEnabled = position == 2
-                if (position != 2) countrySpinner.setSelection(0)
-                if (position == 2) providerStatusView.append(" انتخاب کشور فعلاً فقط نمایشی است و تا تکمیل موتور اعمال نمی‌شود.")
+                countrySpinner.setSelection(0)
             }
         }
-        countrySpinner.isEnabled = false
         page.addView(routingCard, sectionParams())
 
         val profileCard = card()
