@@ -121,7 +121,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Keep pipefail for later commands, but let sdkmanager determine the license step status.
+          set +o pipefail
           yes | sdkmanager --licenses >/dev/null
+          set -o pipefail
           sdkmanager \
             "platform-tools" \
             "platforms;android-35" \
