@@ -6,7 +6,7 @@ package ai.molido.vpn.core
  */
 object PrivacyRedactor {
     private val assignments = Regex(
-        """(?i)\b(private[_ -]?key|preshared[_ -]?key|password|passwd|token|authorization|secret)\s*[:=]\s*([^\s,;]+)"""
+        """(?i)\b(private[_ -]?key|preshared[_ -]?key|password|passwd|token|authorization|secret)\s*[:=]\s*(?:Bearer\s+)?([^\s,;]+)"""
     )
     private val bearer = Regex("""(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+""")
     private val ipv4 = Regex("""\b(?:\d{1,3}\.){3}\d{1,3}\b""")
