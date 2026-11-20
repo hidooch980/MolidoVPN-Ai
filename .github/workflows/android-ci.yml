@@ -74,15 +74,6 @@ jobs:
           done
           exit 1
 
-      - name: Build debug APK for physical-device acceptance testing
-        run: gradle --no-daemon :android:app:assembleDebug
-      - name: Upload device-test APK (debug signed; not a release)
-        uses: actions/upload-artifact@v4
-        with:
-          name: molido-vpn-android-device-test-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 7
 
   backend:
     name: Test self-hosted control plane
