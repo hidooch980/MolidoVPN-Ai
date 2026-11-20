@@ -195,7 +195,12 @@ class MainActivity : ComponentActivity() {
 
         val recoveryCard = card()
         recoveryCard.addView(label("بازیابی و امنیت", 17f, AQUA, true))
-        recoveryCard.addView(label("مالکیت TUN یکتا • کلیدهای اعتماد در Android Keystore • پروفایل فقط در حافظه", 13f, MUTED, false))
+        recoveryCard.addView(label("مالکیت TUN یکتا • کلیدهای اعتماد در Android Keystore • بازیابی پروفایل فقط با اقدام دستی", 13f, MUTED, false))
+        val restoreProfileButton = glassButton("بازیابی دستی پروفایل رمزگذاری‌شده", false).apply {
+            isEnabled = molidoApp.secureProfileStore.hasUserConsent()
+            setOnClickListener { restoreSecureProfile() }
+        }
+        recoveryCard.addView(restoreProfileButton, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(12) })
         recoveryButton = glassButton("پاک‌سازی امن نشست ناموفق", false).apply {
             visibility = View.GONE
             setOnClickListener { prepareRecovery() }
@@ -330,6 +335,35 @@ class MainActivity : ComponentActivity() {
                 }
             }
             .show()
+    }
+
+    private fun restoreSecureProfile() {
+        if (molidoApp.vpnSessions.snapshot().state != SessionState.IDLE) {
+            Toast.makeText(this, "بازیابی پروفایل فقط پس از توقف کامل نشست مجاز است.", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (!molidoApp.secureProfileStore.hasUserConsent()) {
+            Toast.makeText(this, "برای بازیابی، رضایت ذخیره‌سازی امن لازم است.", Toast.LENGTH_LONG).show()
+            return
+        }
+        var bytes: ByteArray? = null
+        try {
+            bytes = molidoApp.secureProfileStore.loadProfile()
+                ?: error("No encrypted profile is available")
+            require(bytes.isNotEmpty() && bytes.size <= MAX_PROFILE_BYTES) { "Stored profile size is invalid" }
+            profileText = String(bytes, StandardCharsets.UTF_8)
+            require(!profileText.isNullOrBlank()) { "Stored profile is empty" }
+            profileView.text = "پروفایل رمزگذاری‌شده بازیابی شد • اتصال خودکار غیرفعال"
+            statusView.text = "پروفایل در حافظه آماده است؛ اتصال فقط با فرمان دستی شما آغاز می‌شود."
+            renderState()
+        } catch (_: Exception) {
+            profileText = null
+            profileView.text = "بازیابی پروفایل ذخیره‌شده ناموفق بود"
+            connectButton.isEnabled = false
+            Toast.makeText(this, "کلید یا داده رمزگذاری‌شده در دسترس نیست؛ اتصال آغاز نشد.", Toast.LENGTH_LONG).show()
+        } finally {
+            bytes?.fill(0)
+        }
     }
 
     private fun requestVpnConsentAndConnect() {
