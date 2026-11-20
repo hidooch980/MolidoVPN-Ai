@@ -13,6 +13,8 @@ import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Spinner
+import android.widget.ArrayAdapter
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -38,6 +40,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var policyView: TextView
     private lateinit var profileImportButton: Button
     private lateinit var wireGuardStateView: TextView
+    private lateinit var providerSpinner: Spinner
+    private lateinit var countrySpinner: Spinner
+    private lateinit var providerStatusView: TextView
     private var controlsBusy = false
     private val policyButtons = mutableMapOf<NetworkPolicy, Button>()
     private var profileText: String? = null
@@ -168,6 +173,46 @@ class MainActivity : ComponentActivity() {
         engineCard.addView(engineRow("MASQUE / WARP", "هنوز پیاده‌سازی نشده", false))
         page.addView(engineCard, sectionParams())
 
+        val routingCard = card()
+        routingCard.addView(label("انتخاب مسیر اتصال", 17f, AQUA, true))
+        routingCard.addView(label("سرویس‌دهنده و کشور مقصد را از فهرست‌ها انتخاب کنید. انتخاب، اتصال خودکار ایجاد نمی‌کند.", 12f, MUTED, false))
+        routingCard.addView(label("سرویس‌دهنده", 13f, WHITE, true).apply { setPadding(0, dp(12), 0, dp(5)) })
+        providerSpinner = dropdown(listOf(
+            "WireGuard • پروفایل شخصی",
+            "Cloudflare WARP • در حال پیاده‌سازی",
+            "Tor • نیازمند ادغام موتور",
+            "Psiphon • نیازمند ادغام موتور"
+        ))
+        routingCard.addView(providerSpinner, LinearLayout.LayoutParams(-1, dp(50)))
+        routingCard.addView(label("کشور مقصد", 13f, WHITE, true).apply { setPadding(0, dp(12), 0, dp(5)) })
+        countrySpinner = dropdown(listOf(
+            "خودکار / تعیین توسط سرویس",
+            "آلمان", "آمریکا", "هلند", "فرانسه", "بریتانیا", "سوئیس",
+            "سوئد", "کانادا", "ژاپن", "سنگاپور", "ترکیه", "استرالیا"
+        ))
+        routingCard.addView(countrySpinner, LinearLayout.LayoutParams(-1, dp(50)))
+        providerStatusView = label(
+            "WireGuard فعلاً فقط از کشور/میزبان داخل پروفایل واردشده استفاده می‌کند؛ انتخاب کشور در این فهرست هنوز مسیر سرور را تغییر نمی‌دهد.",
+            12f, GOLD, false
+        ).apply { setPadding(0, dp(10), 0, 0) }
+        routingCard.addView(providerStatusView)
+        providerSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                providerStatusView.text = when (position) {
+                    0 -> "WireGuard: اتصال فقط با پروفایل معتبر و واردشده انجام می‌شود. کشور خروجی را سرور همان پروفایل تعیین می‌کند."
+                    1 -> "Cloudflare WARP: مسیر مصرف‌کننده کشور خروجی قابل انتخاب ارائه نمی‌کند؛ ادغام رسمی/قابل اتکا هنوز انجام نشده است."
+                    2 -> "Tor: پروژه Tor قابلیت انتخاب کشور خروجی دارد، اما موتور Tor داخل Molido هنوز پیاده‌سازی نشده است."
+                    else -> "Psiphon: حساب شخصی معمولاً لازم نیست، اما ادغام پشتیبانی‌شده داخل Molido هنوز آماده نیست."
+                }
+                countrySpinner.isEnabled = position == 2
+                if (position != 2) countrySpinner.setSelection(0)
+                if (position == 2) providerStatusView.append(" انتخاب کشور فعلاً فقط نمایشی است و تا تکمیل موتور اعمال نمی‌شود.")
+            }
+        }
+        countrySpinner.isEnabled = false
+        page.addView(routingCard, sectionParams())
+
         val profileCard = card()
         profileCard.addView(label("پروفایل و تنظیمات اتصال", 17f, AQUA, true))
         profileImportButton = glassButton("＋  وارد کردن پروفایل WireGuard", false)
@@ -218,6 +263,17 @@ class MainActivity : ComponentActivity() {
         }
         page.addView(footer)
         setContentView(scroll)
+    }
+
+    private fun dropdown(items: List<String>): Spinner {
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, items).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        return Spinner(this).apply {
+            this.adapter = adapter
+            background = rounded(Color.rgb(18, 54, 67), STROKE, 14f)
+            setPadding(dp(10), 0, dp(10), 0)
+        }
     }
 
     private fun engineRow(name: String, state: String, available: Boolean, wireGuard: Boolean = false): View {
