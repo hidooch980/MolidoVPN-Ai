@@ -197,7 +197,7 @@ class MainActivity : ComponentActivity() {
         recoveryCard.addView(label("بازیابی و امنیت", 17f, AQUA, true))
         recoveryCard.addView(label("مالکیت TUN یکتا • کلیدهای اعتماد در Android Keystore • بازیابی پروفایل فقط با اقدام دستی", 13f, MUTED, false))
         val restoreProfileButton = glassButton("بازیابی دستی پروفایل رمزگذاری‌شده", false).apply {
-            isEnabled = molidoApp.secureProfileStore.hasUserConsent()
+            isEnabled = true
             setOnClickListener { restoreSecureProfile() }
         }
         recoveryCard.addView(restoreProfileButton, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(12) })
