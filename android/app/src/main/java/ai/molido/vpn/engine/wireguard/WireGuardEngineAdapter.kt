@@ -9,14 +9,16 @@ import ai.molido.vpn.core.EngineSession
 import ai.molido.vpn.core.EngineSlot
 import ai.molido.vpn.core.EngineStartException
 import ai.molido.vpn.core.EngineFailureAwareAdapter
+import ai.molido.vpn.core.TunLeaseToken
+import ai.molido.vpn.core.TunOwnershipCoordinator
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * WireGuard userspace adapter backed by the upstream embeddable Android tunnel library.
- * GoBackend's manifest-merged GoBackend.VpnService is the one VPN service/TUN provider.
- * VpnSessionController is the sole application-level caller of this adapter.
+ * GoBackend.VpnService is the sole Android VPN service/TUN provider. The shared
+ * TunOwnershipCoordinator arbitrates every engine before this backend is allowed to start.
  */
 data class WireGuardRuntimeStatistics(
     val receivedBytes: Long,
@@ -24,7 +26,10 @@ data class WireGuardRuntimeStatistics(
     val latestHandshakeEpochMillis: Long
 )
 
-class WireGuardEngineAdapter(context: Context) : EngineAdapter, EngineFailureAwareAdapter {
+class WireGuardEngineAdapter(
+    context: Context,
+    private val tunOwnership: TunOwnershipCoordinator
+) : EngineAdapter, EngineFailureAwareAdapter {
     override val slot: EngineSlot = EngineSlot.WIREGUARD
 
     private val lock = Any()
@@ -32,6 +37,7 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter, EngineFailureAwa
         GoBackend(context.applicationContext)
     }
     private var activeTunnel: Tunnel? = null
+    private var activeLease: TunLeaseToken? = null
     @Volatile private var failureListener: (() -> Unit)? = null
 
     override fun setFailureListener(listener: (() -> Unit)?) {
@@ -53,13 +59,11 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter, EngineFailureAwa
     }
 
     override fun start(configuration: String): EngineSession = synchronized(lock) {
-        check(activeTunnel == null) { "WireGuard session is already active" }
+        check(activeTunnel == null && activeLease == null) { "WireGuard session is already active" }
         require(configuration.isNotBlank()) { "WireGuard configuration is empty" }
         val encoded = configuration.toByteArray(StandardCharsets.UTF_8)
         require(encoded.size <= MAX_CONFIG_BYTES) { "WireGuard configuration exceeds size limit" }
 
-        // Config text contains the private key. Wipe the temporary UTF-8 copy
-        // immediately after parsing, including when parsing rejects the profile.
         val parsed = try {
             Config.parse(ByteArrayInputStream(encoded)).also {
                 require(it.peers.isNotEmpty()) { "WireGuard configuration must contain at least one peer" }
@@ -68,7 +72,9 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter, EngineFailureAwa
             encoded.fill(0)
         }
 
-        // These flags cross the backend callback boundary, so use atomic visibility.
+        val lease = tunOwnership.acquireBackendManaged(slot)
+            ?: throw IllegalStateException("Another engine already owns the VPN TUN lease")
+
         val startupComplete = AtomicBoolean(false)
         val intentionalStop = AtomicBoolean(false)
         val tunnel = object : Tunnel {
@@ -88,14 +94,23 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter, EngineFailureAwa
 
             override fun stop() = synchronized(lock) {
                 if (stopped) return@synchronized
-                check(activeTunnel === tunnel) { "WireGuard session ownership mismatch" }
+                check(activeTunnel === tunnel && activeLease == lease) {
+                    "WireGuard session ownership mismatch"
+                }
+                check(tunOwnership.beginStop(lease)) {
+                    "Shared TUN coordinator refused WireGuard stop transition"
+                }
                 intentionalStop.set(true)
                 try {
                     val resultingState = backend.setState(tunnel, Tunnel.State.DOWN, null)
-                    check(resultingState == Tunnel.State.DOWN && backend.getState(tunnel) == Tunnel.State.DOWN) {
-                        "WireGuard backend did not enter DOWN state"
+                    check(resultingState == Tunnel.State.DOWN &&
+                        backend.getState(tunnel) == Tunnel.State.DOWN
+                    ) { "WireGuard backend did not confirm DOWN state" }
+                    check(tunOwnership.confirmBackendStopped(lease)) {
+                        "Shared TUN coordinator refused backend cleanup confirmation"
                     }
                     activeTunnel = null
+                    activeLease = null
                     stopped = true
                 } catch (failure: Throwable) {
                     intentionalStop.set(false)
@@ -104,22 +119,21 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter, EngineFailureAwa
             }
         }
 
-        // Reserve adapter-local ownership before native startup so failed cleanup can be retried.
         activeTunnel = tunnel
+        activeLease = lease
         try {
             val resultingState = backend.setState(tunnel, Tunnel.State.UP, parsed)
-            check(resultingState == Tunnel.State.UP && backend.getState(tunnel) == Tunnel.State.UP) {
-                "WireGuard backend did not enter UP state"
+            check(resultingState == Tunnel.State.UP &&
+                backend.getState(tunnel) == Tunnel.State.UP
+            ) { "WireGuard backend did not confirm UP state" }
+            check(tunOwnership.markBackendActive(lease)) {
+                "Shared TUN coordinator refused WireGuard activation"
             }
             startupComplete.set(true)
         } catch (failure: Throwable) {
             var cleanupFailure: Throwable? = null
             try {
-                val down = backend.setState(tunnel, Tunnel.State.DOWN, null)
-                check(down == Tunnel.State.DOWN && backend.getState(tunnel) == Tunnel.State.DOWN) {
-                    "WireGuard backend cleanup did not reach DOWN state"
-                }
-                activeTunnel = null
+                session.stop()
             } catch (cleanup: Throwable) {
                 cleanupFailure = cleanup
             }
