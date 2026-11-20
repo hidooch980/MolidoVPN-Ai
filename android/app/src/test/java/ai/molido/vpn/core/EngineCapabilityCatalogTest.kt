@@ -36,7 +36,7 @@ class EngineCapabilityCatalogTest {
         val entry = catalog.single { it.slot == EngineSlot.WIREGUARD }
         assertTrue(entry.countrySelectionSupported)
         assertEquals(listOf("DE", "NL"), entry.availableCountries)
-        assertEquals(EngineReadiness.DEVICE_TESTED, entry.readiness)
+        assertEquals(EngineReadiness.ANDROID_DEVICE_TESTED, entry.readiness)
     }
 
     @Test(expected = IllegalArgumentException::class)
