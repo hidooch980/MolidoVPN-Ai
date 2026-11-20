@@ -127,7 +127,45 @@ class AndroidSecureProfileStoreTest {
         profile.fill(0)
     }
 
-    private fun preferences() = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+
+    @Test
+    fun persistedPreferencesContainCiphertextRatherThanPlainProfile() {
+        val marker = "PROFILE-PLAINTEXT-MUST-NOT-BE-STORED"
+        store.saveProfileWithConsent(marker.toByteArray(), userConfirmed = true)
+        val persisted = preferences().getString(PROFILE_KEY, null)!!
+        assertFalse(persisted.contains(marker))
+        assertFalse(persisted.contains("PrivateKey"))
+    }
+
+    @Test
+    fun missingKeystoreKeyFailsClosedWithoutGeneratingReplacement() {
+        store.saveProfileWithConsent("known-profile".toByteArray(), userConfirmed = true)
+        keyStore().deleteEntry(KEY_ALIAS)
+
+        try {
+            store.loadProfile()
+            fail("A missing decryption key must not be silently regenerated")
+        } catch (_: IllegalStateException) {
+            // expected: stored ciphertext is unrecoverable without its original key
+        }
+        assertFalse(keyStore().containsAlias(KEY_ALIAS))
+        assertTrue(store.hasUserConsent())
+    }
+
+    @Test
+    fun truncatedStoredCiphertextIsRejected() {
+        store.saveProfileWithConsent("known-profile".toByteArray(), userConfirmed = true)
+        preferences().edit()
+            .putString(PROFILE_KEY, Base64.encodeToString(byteArrayOf(1, 2, 3), Base64.NO_WRAP))
+            .commit()
+        try {
+            store.loadProfile()
+            fail("Truncated ciphertext must be rejected")
+        } catch (_: IllegalArgumentException) {
+            // expected
+        }
+    }
+\n    private fun preferences() = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
     private fun keyStore() = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
 
     private companion object {
