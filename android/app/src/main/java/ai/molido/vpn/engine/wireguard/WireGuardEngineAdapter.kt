@@ -38,8 +38,15 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter, EngineFailureAwa
         val encoded = configuration.toByteArray(StandardCharsets.UTF_8)
         require(encoded.size <= MAX_CONFIG_BYTES) { "WireGuard configuration exceeds size limit" }
 
-        val parsed = Config.parse(ByteArrayInputStream(encoded))
-        require(parsed.peers.isNotEmpty()) { "WireGuard configuration must contain at least one peer" }
+        // Config text contains the private key. Wipe the temporary UTF-8 copy
+        // immediately after parsing, including when parsing rejects the profile.
+        val parsed = try {
+            Config.parse(ByteArrayInputStream(encoded)).also {
+                require(it.peers.isNotEmpty()) { "WireGuard configuration must contain at least one peer" }
+            }
+        } finally {
+            encoded.fill(0)
+        }
 
         // These flags cross the backend callback boundary, so use atomic visibility.
         val startupComplete = AtomicBoolean(false)
