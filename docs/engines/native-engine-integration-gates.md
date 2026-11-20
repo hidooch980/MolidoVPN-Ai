@@ -112,3 +112,28 @@ This is only a process-isolation and IPC-liveness scaffold:
 7. Revisit MASQUE/WARP only after a documented supported consumer integration route is available.
 
 No engine may be promoted to selectable until its adapter is registered, its configuration is validated, and its runtime lifecycle passes automated tests. No engine may be marked Android-device-tested or production-verified without the corresponding real-device evidence.
+
+## Mandatory end-to-end acceptance gate (applies to all six engines)
+
+An engine is not complete because a UI selector, capability entry, adapter stub, native library, APK, or CI job exists. The following gates are cumulative and mandatory. A failed or unrun gate blocks promotion; do not infer a pass from a neighboring gate.
+
+1. **Real implementation:** a maintained adapter and pinned native/runtime dependency exist; configuration parsing and validation are bounded; secrets are handled safely; start, health, stop, error and timeout paths are implemented. No placeholder or simulated success path.
+2. **Central architecture:** the adapter is registered through the central session controller. Exactly one designated Android `VpnService` creates and owns the TUN. Engine processes receive only the intended duplicated descriptor/handle with explicit ownership rules; no engine creates a competing VPN service or independent TUN.
+3. **Complete lifecycle and data plane:** test reservation, permission, start, descriptor handoff, route installation, bidirectional TCP and UDP traffic, DNS handling, failure during startup, timeout, user stop, process death, network handover, descriptor closure, remote-stop acknowledgement and repeated reconnect. The session remains reserved until all remote TUN users have acknowledged cleanup.
+4. **Automated tests:** unit tests cover parser, configuration, state machine, ownership and error paths; instrumentation tests cover service/process IPC, descriptor handoff and cleanup; integration tests exercise the real native runtime with deterministic local test endpoints. Tests must assert no double ownership, descriptor leaks, stale RUNNING state or false connectivity success.
+5. **Physical Android device:** install the exact CI artifact/commit on a real supported phone. Test fresh install, permission flow, connect, sustained traffic, stop, force-stop/relaunch, at least three reconnect cycles, and Wi-Fi/mobile handover where available. Emulator-only evidence does not satisfy this gate.
+6. **Security and privacy:** verify DNS and IPv4/IPv6 leak behavior, route coverage and excluded-route behavior, kill/fail-closed behavior, socket protection, profile/credential redaction, secure storage, log/telemetry minimization, malformed and oversized profile rejection, and no traffic escaping outside the intended tunnel under failure.
+7. **Stability and evidence:** run a sustained session (minimum 30 minutes) plus repeated start/stop and network-change tests; inspect memory/FD/thread growth and crash logs. Attach commit SHA, APK digest, device/Android version, engine and server version, test endpoint, traffic results, DNS/leak results, route results, cleanup results, and known limitations. Redact IPs/identifiers where needed; never attach private keys or credentials.
+
+### Promotion rules
+
+- `NOT_IMPLEMENTED`: no real adapter.
+- `SOURCE_IMPLEMENTED`: implementation exists, but CI and/or integration evidence is incomplete.
+- `CI_BUILT`: exact source revision builds in CI.
+- `CI_TESTED`: required automated unit, instrumentation and integration tests pass for that revision.
+- `ANDROID_DEVICE_TESTED`: all physical-device, data-plane, DNS, routing, security and stability gates above pass with recorded evidence.
+- `SERVER_DEPLOYMENT_REQUIRED`: client-side acceptance is complete but the required compatible server/provider deployment is not verified.
+- `PRODUCTION_VERIFIED`: supported client and server deployment, operational monitoring, security review and production-like end-to-end evidence are complete.
+- `BLOCKED`: legal, upstream, provider, architecture or safety prerequisite prevents integration.
+
+Never promote an engine based solely on UI state, native process liveness, VPN interface state, successful core start, handshake timestamp, traffic counters, or CI build. A handshake and RX/TX counters are useful signals but are not proof of DNS correctness, full route coverage, or leak-free internet access.
