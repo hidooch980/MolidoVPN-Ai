@@ -1,0 +1,63 @@
+# WireGuard custom backend decision record
+
+Status: **SELECTED DESIGN — IMPLEMENTATION NOT YET STARTED**
+Decision date: 2026-11-20
+Applies to: Android client, WireGuard engine, central TUN ownership migration
+
+## Decision
+
+Build a pinned, source-based Molido WireGuard backend from the official WireGuard Android tunnel module and its Apache-2.0-licensed source, with a narrow local patch that removes the backend's ownership of Android VPN service creation. The backend must accept a TUN descriptor created by Molido's one central `VpnService`.
+
+Do not keep the published `com.wireguard.android:tunnel` AAR as an operational dependency after migration. Do not add a second VPN service beside its merged `GoBackend.VpnService`. Do not use reflection, private API mutation, or raw integer file-descriptor transfer.
+
+## Why this path
+
+The currently pinned AAR's `GoBackend.setStateInternal(UP)` starts its nested `GoBackend.VpnService`, calls `VpnService.Builder.establish()`, detaches that descriptor, and passes it to the native `wgTurnOn` entry point. The AAR manifest contributes that nested class as an Android VPN service. The supported public API does not accept a descriptor established by an external service.
+
+The upstream tunnel module is identified as Apache License 2.0. The fork must preserve upstream copyright and license notices, include the complete Apache-2.0 license and applicable NOTICE material, record the exact upstream commit/tag, and document every Molido patch. Re-check every transitive/native component's license independently; the module's Apache-2.0 status does not automatically relicense unrelated dependencies.
+
+## Fork boundary and native ABI
+
+1. Pin the official `wireguard-android` source to the exact reviewed tag/commit matching the currently consumed release, rather than tracking a moving branch.
+2. Build the tunnel module from source as a local Gradle module (or a pinned, auditable source submodule). Remove the Maven AAR dependency only in the same change that introduces the replacement module.
+3. Retain the upstream config parser and userspace WireGuard implementation. Refactor the Java backend so its native start method accepts a caller-owned TUN FD and never starts `GoBackend.VpnService`, never calls `Builder.establish()`, and never detaches an internally created TUN.
+4. Keep the JNI class/package/method ABI aligned with the exact pinned native bridge, or deliberately update and rebuild the Go/JNI exports together. Do not rename Java classes casually: JNI symbol names are part of the integration contract.
+5. Replace the upstream manifest contribution so the merged application manifest contains exactly one `android.net.VpnService` component: Molido's central service. Assert this in CI by inspecting the merged manifest for each build variant.
+6. Native socket protection must be delegated to the central service's `protect(fd)` before the WireGuard UDP sockets are used. A backend reporting UP is not proof that sockets are protected or traffic is passing.
+
+## Runtime ownership and FD handoff
+
+The central service is the sole creator and owner of the original `ParcelFileDescriptor`. It acquires a `TunOwnershipCoordinator` lease before creating or handing off a descriptor. It sends a duplicated `ParcelFileDescriptor` through authenticated Binder IPC to the isolated engine process. The receiver validates Binder caller UID, engine slot, session nonce, generation, and one-time transfer state before accepting it.
+
+Never transmit a raw FD integer. Close every descriptor copy on every rejected, exceptional, cancellation, and shutdown path. The engine must report its PID and exact generation; the central service must not trust a PID supplied only in an unauthenticated message.
+
+Shutdown is fail-closed:
+- stop accepting new work and stop the native packet loop;
+- request stop for the exact engine/generation;
+- require the engine to close its duplicate before sending cleanup acknowledgement;
+- central service closes its original descriptor;
+- coordinator releases only after matching cleanup acknowledgement (or confirmed engine process death) and central descriptor closure.
+
+Binder death/process death is a cleanup signal, not an ACK. Missing ACK, timeout, uncertain process identity, or failed descriptor close leaves the lease held and blocks all competing engines. Do not attempt a second engine as a recovery shortcut.
+
+## Implementation sequence
+
+1. Add the pinned upstream source and license inventory; build the unmodified source in CI to establish a reproducible baseline.
+2. Patch the backend to accept an externally supplied TUN FD and a protect-socket callback; add native start/stop tests and verify no implicit VPN service startup remains.
+3. Remove the upstream VPN service manifest contribution and add the central service; add a merged-manifest exactly-one-service test.
+4. Integrate `TunOwnershipCoordinator` into the central service and implement Binder `ParcelFileDescriptor` transfer with UID/nonce/generation checks.
+5. Implement engine cleanup acknowledgement, Binder death recipient, process-death cleanup, idempotent close, and retained-lease failure behavior.
+6. Add Android instrumentation tests for descriptor validity across Binder, closure semantics, wrong UID/slot/generation, concurrent engine contention, failed cleanup, process kill, and descriptor leak detection.
+7. Only after these gates pass, route the WireGuard adapter through the new backend. Keep every other engine non-selectable until it implements the same contract.
+
+## Required acceptance evidence
+
+- Unit tests: two engines racing for a lease; duplicate/stale lease; wrong PID/UID/slot; no cleanup ACK; failed native stop; abrupt engine process death; idempotent close; no release before both descriptor sides are safe.
+- Instrumentation: actual Binder FD duplication and use, engine-side close ACK, service-side original close, Binder death, forced process kill, and no FD leak.
+- Manifest: exactly one declared VPN service and it is Molido's central service; no merged `GoBackend$VpnService`.
+- Runtime: IPv4 and IPv6 route checks, DNS resolution, DNS/IPv6 leak checks, traffic counters and independent external reachability checks, reconnect after clean stop, and forced process death while connected.
+- Physical device: repeat on the user's Android handset and real network. Emulator/CI success is not physical-device or production acceptance.
+
+## Current state
+
+This record selects the implementation path only. The repository still uses the published WireGuard tunnel AAR and `GoBackend`; `TunOwnershipCoordinator` is still a platform-neutral state machine and is not connected to Android `VpnService`, Binder, `ParcelFileDescriptor`, or a custom backend. The central service, secure FD handoff, custom backend, and physical-device data-plane validation remain **NOT IMPLEMENTED**.
