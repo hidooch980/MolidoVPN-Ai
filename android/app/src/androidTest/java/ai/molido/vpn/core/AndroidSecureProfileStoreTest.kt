@@ -165,7 +165,39 @@ class AndroidSecureProfileStoreTest {
             // expected
         }
     }
-\n    private fun preferences() = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+\n
+    @Test
+    fun failedReplacementLeavesPreviouslyCommittedCiphertextReadable() {
+        val original = "previous-valid-profile".toByteArray()
+        store.saveProfileWithConsent(original, userConfirmed = true)
+
+        try {
+            store.saveProfileWithConsent(ByteArray(0), userConfirmed = true)
+            fail("Invalid replacement must fail before persistence")
+        } catch (_: IllegalArgumentException) {
+            // expected
+        }
+
+        val restored = store.loadProfile()
+        assertArrayEquals(original, restored)
+        assertTrue(store.hasUserConsent())
+        restored?.fill(0)
+        original.fill(0)
+    }
+
+    @Test
+    fun revokeConsentMakesExistingCiphertextInaccessibleEvenIfBlobIsReinserted() {
+        store.saveProfileWithConsent("revoked-profile".toByteArray(), userConfirmed = true)
+        val oldCiphertext = preferences().getString(PROFILE_KEY, null)!!
+        store.revokeConsentAndDelete()
+        preferences().edit().putString(PROFILE_KEY, oldCiphertext).commit()
+
+        assertNull(store.loadProfile())
+        assertFalse(store.hasUserConsent())
+        assertFalse(keyStore().containsAlias(KEY_ALIAS))
+    }
+
+    private fun preferences() = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
     private fun keyStore() = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
 
     private companion object {
