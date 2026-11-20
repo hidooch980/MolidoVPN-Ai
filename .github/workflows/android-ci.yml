@@ -121,9 +121,9 @@ jobs:
           channel: stable
           emulator-boot-timeout: 900
           disable-animations: true
-          # GitHub-hosted Ubuntu runners expose KVM; keep hardware acceleration enabled.
-          # The action's default disables it, which makes current emulator builds exit immediately.
-          disable-linux-hw-accel: false
+          # GitHub-hosted Ubuntu runners may not expose usable KVM to the emulator.
+          # Force software acceleration so boot does not depend on nested virtualization.
+          disable-linux-hw-accel: true
           cores: 2
           ram-size: 3072
           heap-size: 512
