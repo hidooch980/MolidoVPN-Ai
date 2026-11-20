@@ -164,13 +164,17 @@ class MainActivity : ComponentActivity() {
 
         val engineCard = card()
         engineCard.addView(label("موتورهای VPN", 17f, AQUA, true))
-        engineCard.addView(label("فقط موتورهای پیاده‌سازی و آزمایش‌شده قابل انتخاب هستند.", 12f, MUTED, false))
+        engineCard.addView(label("وضعیت هر موتور از ثبت آداپتور و مراحل واقعی آزمون استخراج می‌شود.", 12f, MUTED, false))
         molidoApp.engineCapabilities.forEach { capability ->
             val status = when (capability.readiness) {
                 ai.molido.vpn.core.EngineReadiness.NOT_IMPLEMENTED -> "هنوز پیاده‌سازی نشده"
                 ai.molido.vpn.core.EngineReadiness.SOURCE_IMPLEMENTED -> "کد موجود • تست اتصال روی دستگاه لازم است"
-                ai.molido.vpn.core.EngineReadiness.DEVICE_TESTED -> "روی دستگاه آزمایش شده"
+                ai.molido.vpn.core.EngineReadiness.CI_BUILT -> "ساخت CI موفق"
+                ai.molido.vpn.core.EngineReadiness.CI_TESTED -> "تست CI موفق"
+                ai.molido.vpn.core.EngineReadiness.ANDROID_DEVICE_TESTED -> "روی دستگاه Android آزمایش شده"
+                ai.molido.vpn.core.EngineReadiness.SERVER_DEPLOYMENT_REQUIRED -> "نیازمند استقرار سرور"
                 ai.molido.vpn.core.EngineReadiness.PRODUCTION_VERIFIED -> "تأیید تولید"
+                ai.molido.vpn.core.EngineReadiness.BLOCKED -> "مسدود / نیازمند رفع مانع"
             }
             engineCard.addView(engineRow(
                 capability.displayName,
