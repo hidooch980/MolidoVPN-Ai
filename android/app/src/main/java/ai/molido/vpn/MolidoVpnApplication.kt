@@ -10,6 +10,8 @@ import ai.molido.vpn.core.AndroidUpdateInstaller
 import ai.molido.vpn.core.ControlPlaneClient
 import ai.molido.vpn.core.ControlPlaneFetchResult
 import ai.molido.vpn.core.DiagnosticsObservabilityCore
+import ai.molido.vpn.core.EngineCapability
+import ai.molido.vpn.core.EngineCapabilityCatalog
 import ai.molido.vpn.core.NetworkAssessment
 import ai.molido.vpn.core.NetworkIntelligenceCore
 import ai.molido.vpn.core.NetworkObservation
@@ -28,6 +30,9 @@ class MolidoVpnApplication : Application() {
     lateinit var vpnExecutor: ExecutorService
         private set
     lateinit var networkMonitor: AndroidNetworkObservationMonitor
+        private set
+    /** Live capability list; entries are derived from adapters actually wired at runtime. */
+    lateinit var engineCapabilities: List<EngineCapability>
         private set
 
     private val observation = AtomicReference<NetworkObservation?>(null)
@@ -70,9 +75,11 @@ class MolidoVpnApplication : Application() {
         vpnExecutor = Executors.newSingleThreadExecutor { task ->
             Thread(task, "molido-vpn-control").apply { isDaemon = true }
         }
+        val registeredAdapters = listOf(WireGuardEngineAdapter(this))
+        engineCapabilities = EngineCapabilityCatalog.build(registeredAdapters)
         vpnSessions = VpnSessionController(
             supervisor = SessionSupervisor(),
-            adapters = listOf(WireGuardEngineAdapter(this)),
+            adapters = registeredAdapters,
             networkAssessmentProvider = { latestNetworkAssessment() },
             networkPolicyProvider = { selectedNetworkPolicy.get() },
             diagnostics = diagnostics
