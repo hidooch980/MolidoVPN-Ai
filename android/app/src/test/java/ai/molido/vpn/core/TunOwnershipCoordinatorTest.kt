@@ -2,16 +2,33 @@ package ai.molido.vpn.core
 
 import org.junit.Assert.*
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class TunOwnershipCoordinatorTest {
     @Test
     fun concurrentEngineContentionAllowsExactlyOneLease() {
         val coordinator = TunOwnershipCoordinator()
-        val first = coordinator.acquire(EngineSlot.WIREGUARD)
-        val second = coordinator.acquire(EngineSlot.TOR)
-        assertNotNull(first)
-        assertNull(second)
-        assertEquals(EngineSlot.WIREGUARD, coordinator.snapshot().owner)
+        val ready = CountDownLatch(2)
+        val start = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val attempts = listOf(EngineSlot.WIREGUARD, EngineSlot.TOR).map { engine ->
+                pool.submit<TunLeaseToken?> {
+                    ready.countDown()
+                    check(start.await(5, TimeUnit.SECONDS))
+                    coordinator.acquire(engine)
+                }
+            }
+            assertTrue(ready.await(5, TimeUnit.SECONDS))
+            start.countDown()
+            val leases = attempts.map { it.get(5, TimeUnit.SECONDS) }.filterNotNull()
+            assertEquals(1, leases.size)
+            assertEquals(leases.single().engine, coordinator.snapshot().owner)
+        } finally {
+            pool.shutdownNow()
+        }
     }
 
     @Test
