@@ -1,6 +1,7 @@
 package ai.molido.vpn
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
@@ -69,6 +70,7 @@ class MainActivity : ComponentActivity() {
                 profileView.text = "پروفایل WireGuard بارگذاری شد • فقط در حافظه"
                 connectButton.isEnabled = true
                 statusView.text = "پروفایل آماده است؛ برای شروع، مجوز VPN اندروید لازم است."
+                offerSecureProfileStorage()
             } catch (_: Exception) {
                 profileText = null
                 profileView.text = "هنوز پروفایلی انتخاب نشده"
@@ -199,6 +201,10 @@ class MainActivity : ComponentActivity() {
             setOnClickListener { prepareRecovery() }
         }
         recoveryCard.addView(recoveryButton, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(12) })
+        val revokeProfileButton = glassButton("لغو رضایت و حذف پروفایل ذخیره‌شده", false).apply {
+            setOnClickListener { revokeSecureProfileStorage() }
+        }
+        recoveryCard.addView(revokeProfileButton, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(8) })
         page.addView(recoveryCard, sectionParams())
 
         val footer = label("خانه     •     سرورها     •     تنظیمات     •     پشتیبانی", 13f, MUTED, true).apply {
@@ -259,6 +265,69 @@ class MainActivity : ComponentActivity() {
 
     // The application exposes the active policy through this UI-owned selection.
     private fun molidoAppPolicy() = molidoApp.currentNetworkPolicy()
+
+    private fun offerSecureProfileStorage() {
+        if (molidoApp.secureProfileStore.hasUserConsent()) {
+            AlertDialog.Builder(this)
+                .setTitle("ذخیره امن پروفایل")
+                .setMessage("رضایت قبلی شما فعال است. آیا نسخه رمزگذاری‌شده این پروفایل جایگزین شود؟")
+                .setNegativeButton("فعلاً نه", null)
+                .setPositiveButton("ذخیره رمزگذاری‌شده") { _, _ -> persistCurrentProfile() }
+                .show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("رضایت برای ذخیره امن پروفایل")
+            .setMessage("در صورت موافقت، پروفایل فقط روی همین دستگاه و با کلید غیرقابل‌استخراج Android Keystore رمزگذاری می‌شود. این کار اتصال خودکار را فعال نمی‌کند. آیا اجازه ذخیره می‌دهید؟")
+            .setNegativeButton("خیر؛ فقط در حافظه") { _, _ ->
+                Toast.makeText(this, "پروفایل فقط تا پایان عمر فرایند در حافظه می‌ماند.", Toast.LENGTH_LONG).show()
+            }
+            .setPositiveButton("موافقت و ذخیره") { _, _ ->
+                try {
+                    molidoApp.secureProfileStore.grantUserConsent(userConfirmed = true)
+                    persistCurrentProfile()
+                } catch (_: Exception) {
+                    Toast.makeText(this, "ذخیره رضایت یا پروفایل امن ناموفق بود.", Toast.LENGTH_LONG).show()
+                }
+            }
+            .show()
+    }
+
+    private fun persistCurrentProfile() {
+        if (molidoApp.vpnSessions.snapshot().state != SessionState.IDLE) {
+            Toast.makeText(this, "ذخیره پروفایل فقط پس از توقف کامل نشست مجاز است.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val bytes = profileText?.toByteArray(StandardCharsets.UTF_8) ?: return
+        try {
+            molidoApp.secureProfileStore.saveProfile(bytes)
+            Toast.makeText(this, "پروفایل با AES-GCM ذخیره شد؛ اتصال خودکار همچنان غیرفعال است.", Toast.LENGTH_LONG).show()
+        } catch (_: Exception) {
+            Toast.makeText(this, "ذخیره امن پروفایل ناموفق بود.", Toast.LENGTH_LONG).show()
+        } finally {
+            bytes.fill(0)
+        }
+    }
+
+    private fun revokeSecureProfileStorage() {
+        if (molidoApp.vpnSessions.snapshot().state != SessionState.IDLE) {
+            Toast.makeText(this, "برای حذف پروفایل ذخیره‌شده ابتدا VPN را کاملاً قطع کنید.", Toast.LENGTH_LONG).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("حذف پروفایل ذخیره‌شده")
+            .setMessage("رضایت لغو می‌شود، داده رمزگذاری‌شده حذف و کلید اختصاصی این مخزن از Android Keystore پاک می‌شود.")
+            .setNegativeButton("انصراف", null)
+            .setPositiveButton("لغو رضایت و حذف") { _, _ ->
+                try {
+                    molidoApp.secureProfileStore.revokeConsentAndDelete()
+                    Toast.makeText(this, "رضایت لغو و پروفایل ذخیره‌شده حذف شد.", Toast.LENGTH_LONG).show()
+                } catch (_: Exception) {
+                    Toast.makeText(this, "حذف کامل انجام نشد؛ وضعیت ذخیره‌سازی را بررسی کنید.", Toast.LENGTH_LONG).show()
+                }
+            }
+            .show()
+    }
 
     private fun requestVpnConsentAndConnect() {
         if (profileText.isNullOrBlank()) {
