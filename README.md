@@ -2,6 +2,22 @@
 
 **A self-hosted, privacy-first VPN platform with an Android client and an adaptive multi-engine architecture.**
 
+## Current engine delivery status
+
+| Engine / subsystem | Current verified state |
+|---|---|
+| WireGuard | Source adapter and CI validation; real Android device/server acceptance pending |
+| TUN ownership / native IPC | Process-isolation scaffold only; unified TUN service and descriptor handoff not implemented |
+| Tor | Official Tor Android and MIT tun2socks candidates reviewed; no integrated Tor VPN adapter |
+| Xray / libXray | Official API and Go-runtime isolation requirements reviewed; no runtime adapter |
+| AmneziaWG | Official source build path reviewed; source build not integrated |
+| Psiphon | GPL-3.0 confirmed; distribution/license approval required before bundling |
+| MASQUE / WARP | No supported public consumer embedding SDK/API established; integration blocked |
+
+Engines without a complete registered adapter remain unavailable in the app. CI build success is not device connectivity evidence. Debug/Test APKs are not published as owner deliverables; only verified Stable Production artifacts may be delivered.
+
+**A self-hosted, privacy-first VPN platform with an Android client and an adaptive multi-engine architecture.**
+
 This repository is the clean, authoritative home of MolidoVPN AI. Product development takes place on `development/molido-vpn-ai-from-scratch`. No legacy repository or previous implementation is treated as a product source of truth.
 
 ## Non-negotiable architecture
