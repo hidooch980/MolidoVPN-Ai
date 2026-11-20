@@ -179,6 +179,9 @@ class MainActivity : ComponentActivity() {
                 wireGuard = capability.slot == EngineSlot.WIREGUARD
             ))
         }
+        engineCard.addView(glassButton("به‌روزرسانی آمار WireGuard", false).apply {
+            setOnClickListener { refreshWireGuardStatistics() }
+        }, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(10) })
         page.addView(engineCard, sectionParams())
 
         val routingCard = card()
@@ -266,6 +269,25 @@ class MainActivity : ComponentActivity() {
         }
         page.addView(footer)
         setContentView(scroll)
+    }
+
+    private fun refreshWireGuardStatistics() {
+        try {
+            val stats = molidoApp.wireGuardAdapter.runtimeStatistics()
+            if (stats == null) {
+                providerStatusView.text = "WireGuard فعال نیست؛ ابتدا یک پروفایل معتبر وارد و اتصال را آغاز کنید."
+                return
+            }
+            val handshake = if (stats.latestHandshakeEpochMillis > 0L) {
+                val ageSeconds = ((System.currentTimeMillis() - stats.latestHandshakeEpochMillis).coerceAtLeast(0L)) / 1000L
+                "آخرین Handshake: $ageSeconds ثانیه قبل"
+            } else {
+                "هنوز Handshake ثبت نشده است"
+            }
+            providerStatusView.text = "$handshake\nدریافت: ${stats.receivedBytes} بایت • ارسال: ${stats.transmittedBytes} بایت\nاین آمار به‌تنهایی دسترسی اینترنت یا سلامت کامل Data Plane را اثبات نمی‌کند."
+        } catch (_: Exception) {
+            providerStatusView.text = "خواندن آمار WireGuard ناموفق بود؛ وضعیت اتصال را موفق فرض نکنید."
+        }
     }
 
     private fun dropdown(items: List<String>): Spinner {
