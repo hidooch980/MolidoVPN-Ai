@@ -1,7 +1,6 @@
 package ai.molido.vpn.core
 
 import android.content.Context
-import android.security.keystore.KeyInfo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SmallTest
@@ -40,9 +39,7 @@ class AndroidSecureProfileStoreTest {
         assertTrue(store.hasUserConsent())
         assertTrue(keyStore().containsAlias(KEY_ALIAS))
         val key = keyStore().getKey(KEY_ALIAS, null) as SecretKey
-        val keyInfo = (javax.crypto.SecretKeyFactory.getInstance(key.algorithm, ANDROID_KEYSTORE)
-            .getKeySpec(key, KeyInfo::class.java) as KeyInfo)
-        assertFalse("Keystore key must not be exportable", keyInfo.isInsideSecureHardware.not() && keyInfo.isUserAuthenticationRequired)
+        assertNull("Android Keystore key material must not be exportable", key.encoded)
         val restored = AndroidSecureProfileStore(context).loadProfile()
         assertArrayEquals(profile, restored)
         restored?.fill(0)
