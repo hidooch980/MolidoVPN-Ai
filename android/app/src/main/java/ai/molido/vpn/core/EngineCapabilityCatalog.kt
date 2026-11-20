@@ -45,6 +45,12 @@ data class EngineCapability(
 }
 
 object EngineCapabilityCatalog {
+    /** External legal/protocol gates are visible and fail closed until explicitly resolved. */
+    val DEFAULT_BLOCKED_REASONS: Map<EngineSlot, String> = mapOf(
+        EngineSlot.PSIPHON to "Blocked: GPL-3.0 distribution model or written commercial exception has not been approved",
+        EngineSlot.MASQUE_WARP to "Blocked: no supported public third-party Android embedding SDK/API and terms have been established"
+    )
+
     private val names = mapOf(
         EngineSlot.WIREGUARD to "WireGuard",
         EngineSlot.AMNEZIA_WG to "AmneziaWG",
@@ -63,7 +69,8 @@ object EngineCapabilityCatalog {
     fun build(
         adapters: Collection<EngineAdapter>,
         verifiedSlots: Set<EngineSlot> = emptySet(),
-        countryInventories: Map<EngineSlot, List<String>> = emptyMap()
+        countryInventories: Map<EngineSlot, List<String>> = emptyMap(),
+        blockedReasons: Map<EngineSlot, String> = DEFAULT_BLOCKED_REASONS
     ): List<EngineCapability> {
         val registered = adapters.map { it.slot }.toSet()
         require(registered.size == adapters.size) { "Duplicate engine adapter slot" }
@@ -79,6 +86,7 @@ object EngineCapabilityCatalog {
                 slot = slot,
                 displayName = names.getValue(slot),
                 readiness = when {
+                    slot in blockedReasons -> EngineReadiness.BLOCKED
                     !hasAdapter -> EngineReadiness.NOT_IMPLEMENTED
                     verified -> EngineReadiness.ANDROID_DEVICE_TESTED
                     else -> EngineReadiness.SOURCE_IMPLEMENTED
@@ -87,6 +95,7 @@ object EngineCapabilityCatalog {
                 countrySelectionSupported = countries.isNotEmpty(),
                 availableCountries = countries,
                 statusDetail = when {
+                    slot in blockedReasons -> blockedReasons.getValue(slot)
                     !hasAdapter -> "Adapter not implemented"
                     verified -> "Android-device-tested; production verification is separate"
                     else -> "Source adapter registered; device connectivity not verified"
