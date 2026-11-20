@@ -123,7 +123,7 @@ jobs:
           disable-animations: true
           # GitHub-hosted Ubuntu runners expose KVM; keep hardware acceleration enabled.
           # The action's default disables it, which makes current emulator builds exit immediately.
-          disable-linux-hardware-accel: false
+          disable-linux-hw-accel: false
           cores: 2
           ram-size: 3072
           heap-size: 512
