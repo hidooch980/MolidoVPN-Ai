@@ -284,8 +284,7 @@ class MainActivity : ComponentActivity() {
             }
             .setPositiveButton("موافقت و ذخیره") { _, _ ->
                 try {
-                    molidoApp.secureProfileStore.grantUserConsent(userConfirmed = true)
-                    persistCurrentProfile()
+                    persistCurrentProfile(userConfirmed = true)
                 } catch (_: Exception) {
                     Toast.makeText(this, "ذخیره رضایت یا پروفایل امن ناموفق بود.", Toast.LENGTH_LONG).show()
                 }
@@ -293,14 +292,18 @@ class MainActivity : ComponentActivity() {
             .show()
     }
 
-    private fun persistCurrentProfile() {
+    private fun persistCurrentProfile(userConfirmed: Boolean = false) {
         if (molidoApp.vpnSessions.snapshot().state != SessionState.IDLE) {
             Toast.makeText(this, "ذخیره پروفایل فقط پس از توقف کامل نشست مجاز است.", Toast.LENGTH_LONG).show()
             return
         }
         val bytes = profileText?.toByteArray(StandardCharsets.UTF_8) ?: return
         try {
-            molidoApp.secureProfileStore.saveProfile(bytes)
+            if (userConfirmed) {
+                molidoApp.secureProfileStore.saveProfileWithConsent(bytes, userConfirmed = true)
+            } else {
+                molidoApp.secureProfileStore.saveProfile(bytes)
+            }
             Toast.makeText(this, "پروفایل با AES-GCM ذخیره شد؛ اتصال خودکار همچنان غیرفعال است.", Toast.LENGTH_LONG).show()
         } catch (_: Exception) {
             Toast.makeText(this, "ذخیره امن پروفایل ناموفق بود.", Toast.LENGTH_LONG).show()
