@@ -18,6 +18,7 @@ import ai.molido.vpn.core.NetworkObservation
 import ai.molido.vpn.core.NetworkPolicy
 import ai.molido.vpn.core.NetworkPolicySettingsStore
 import ai.molido.vpn.core.SessionSupervisor
+import ai.molido.vpn.core.TunOwnershipCoordinator
 import ai.molido.vpn.core.VpnSessionController
 import ai.molido.vpn.engine.wireguard.WireGuardEngineAdapter
 import java.util.concurrent.ExecutorService
@@ -35,6 +36,9 @@ class MolidoVpnApplication : Application() {
     lateinit var engineCapabilities: List<EngineCapability>
         private set
     lateinit var wireGuardAdapter: WireGuardEngineAdapter
+        private set
+    /** Shared single-TUN lease coordinator; all future engine adapters must receive this instance. */
+    lateinit var tunOwnershipCoordinator: TunOwnershipCoordinator
         private set
 
     private val observation = AtomicReference<NetworkObservation?>(null)
@@ -77,7 +81,8 @@ class MolidoVpnApplication : Application() {
         vpnExecutor = Executors.newSingleThreadExecutor { task ->
             Thread(task, "molido-vpn-control").apply { isDaemon = true }
         }
-        wireGuardAdapter = WireGuardEngineAdapter(this)
+        tunOwnershipCoordinator = TunOwnershipCoordinator()
+        wireGuardAdapter = WireGuardEngineAdapter(this, tunOwnershipCoordinator)
         val registeredAdapters = listOf(wireGuardAdapter)
         engineCapabilities = EngineCapabilityCatalog.build(registeredAdapters)
         vpnSessions = VpnSessionController(
