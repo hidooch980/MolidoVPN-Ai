@@ -19,7 +19,7 @@ concurrency:
 jobs:
   validate:
     name: Validate Android source
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - name: Checkout
@@ -75,7 +75,7 @@ jobs:
 
   backend:
     name: Test self-hosted control plane
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -93,11 +93,10 @@ jobs:
           PYTHONPATH: .
         run: python -m pytest -q backend/tests
 
-
   android-keystore-instrumentation:
     name: Android Keystore instrumentation (emulator)
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -117,9 +116,70 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
+          channel: stable
           emulator-boot-timeout: 900
           disable-animations: true
           cores: 2
-          ram-size: 2048
+          ram-size: 3072
           heap-size: 512
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: gradle --no-daemon :android:app:connectedDebugAndroidTest
+
+  signed-release:
+    name: Build and verify signed Android release
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/development/molido-vpn-ai-from-scratch'
+    needs:
+      - validate
+      - backend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Decode release keystore and build signed APK
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${ANDROID_KEYSTORE_BASE64:?Missing ANDROID_KEYSTORE_BASE64 secret}"
+          : "${ANDROID_KEYSTORE_PASSWORD:?Missing ANDROID_KEYSTORE_PASSWORD secret}"
+          : "${ANDROID_KEY_ALIAS:?Missing ANDROID_KEY_ALIAS secret}"
+          : "${ANDROID_KEY_PASSWORD:?Missing ANDROID_KEY_PASSWORD secret}"
+          KEYSTORE_PATH="$RUNNER_TEMP/molido-release-keystore.p12"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+          unset ANDROID_KEYSTORE_BASE64
+          export ANDROID_KEYSTORE_FILE="$KEYSTORE_PATH"
+          gradle --no-daemon :android:app:assembleRelease
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          APKSIGNER="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          APK_CERT_SHA256="$("$APKSIGNER" verify --print-certs "$APK" 2>&1 | awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print tolower($2); exit}')"
+          KEY_CERT_SHA256="$(keytool -exportcert -keystore "$KEYSTORE_PATH" -storetype PKCS12 -alias "$ANDROID_KEY_ALIAS" -storepass "$ANDROID_KEYSTORE_PASSWORD" | sha256sum | awk '{print $1}')"
+          if [ -z "$APK_CERT_SHA256" ] || [ "$APK_CERT_SHA256" != "$KEY_CERT_SHA256" ]; then
+            echo "APK signing certificate does not match the configured release keystore."
+            exit 1
+          fi
+          echo "APK signature verified and certificate fingerprint matches the configured keystore."
+      - name: Upload verified signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: molido-vpn-android-signed-release
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
