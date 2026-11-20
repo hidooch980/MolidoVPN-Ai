@@ -11,8 +11,12 @@ package ai.molido.vpn.core
 enum class EngineReadiness {
     NOT_IMPLEMENTED,
     SOURCE_IMPLEMENTED,
-    DEVICE_TESTED,
-    PRODUCTION_VERIFIED
+    CI_BUILT,
+    CI_TESTED,
+    ANDROID_DEVICE_TESTED,
+    SERVER_DEPLOYMENT_REQUIRED,
+    PRODUCTION_VERIFIED,
+    BLOCKED
 }
 
 data class EngineCapability(
@@ -25,7 +29,7 @@ data class EngineCapability(
     val statusDetail: String
 ) {
     /** A profile/configuration is still required before a connection attempt. */
-    val selectable: Boolean get() = adapterRegistered
+    val selectable: Boolean get() = adapterRegistered && readiness != EngineReadiness.BLOCKED
 
     init {
         require(availableCountries.distinct().size == availableCountries.size) {
@@ -76,7 +80,7 @@ object EngineCapabilityCatalog {
                 displayName = names.getValue(slot),
                 readiness = when {
                     !hasAdapter -> EngineReadiness.NOT_IMPLEMENTED
-                    verified -> EngineReadiness.DEVICE_TESTED
+                    verified -> EngineReadiness.ANDROID_DEVICE_TESTED
                     else -> EngineReadiness.SOURCE_IMPLEMENTED
                 },
                 adapterRegistered = hasAdapter,
@@ -84,7 +88,7 @@ object EngineCapabilityCatalog {
                 availableCountries = countries,
                 statusDetail = when {
                     !hasAdapter -> "Adapter not implemented"
-                    verified -> "Device-tested; production verification is separate"
+                    verified -> "Android-device-tested; production verification is separate"
                     else -> "Source adapter registered; device connectivity not verified"
                 }
             )
