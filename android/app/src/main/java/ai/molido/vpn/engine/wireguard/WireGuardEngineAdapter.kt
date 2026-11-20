@@ -18,6 +18,12 @@ import java.util.concurrent.atomic.AtomicBoolean
  * GoBackend's manifest-merged GoBackend.VpnService is the one VPN service/TUN provider.
  * VpnSessionController is the sole application-level caller of this adapter.
  */
+data class WireGuardRuntimeStatistics(
+    val receivedBytes: Long,
+    val transmittedBytes: Long,
+    val latestHandshakeEpochMillis: Long
+)
+
 class WireGuardEngineAdapter(context: Context) : EngineAdapter, EngineFailureAwareAdapter {
     override val slot: EngineSlot = EngineSlot.WIREGUARD
 
@@ -30,6 +36,20 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter, EngineFailureAwa
 
     override fun setFailureListener(listener: (() -> Unit)?) {
         failureListener = listener
+    }
+
+    /** Snapshot counters; these do not by themselves prove internet reachability. */
+    fun runtimeStatistics(): WireGuardRuntimeStatistics? = synchronized(lock) {
+        val tunnel = activeTunnel ?: return@synchronized null
+        val statistics = backend.getStatistics(tunnel)
+        val latestHandshake = statistics.peers()
+            .mapNotNull { peer -> statistics.peer(peer)?.latestHandshakeEpochMillis() }
+            .maxOrNull() ?: 0L
+        WireGuardRuntimeStatistics(
+            receivedBytes = statistics.totalRx(),
+            transmittedBytes = statistics.totalTx(),
+            latestHandshakeEpochMillis = latestHandshake
+        )
     }
 
     override fun start(configuration: String): EngineSession = synchronized(lock) {
