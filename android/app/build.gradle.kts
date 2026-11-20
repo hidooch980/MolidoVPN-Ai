@@ -1,5 +1,16 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
+val releaseKeystorePath = System.getenv("ANDROID_KEYSTORE_FILE")
+val releaseStorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+val releaseKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
+val releaseKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+val releaseSigningConfigured = listOf(
+    releaseKeystorePath,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword
+).all { !it.isNullOrBlank() }
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -18,9 +29,24 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = file(requireNotNull(releaseKeystorePath))
+                storePassword = requireNotNull(releaseStorePassword)
+                keyAlias = requireNotNull(releaseKeyAlias)
+                keyPassword = requireNotNull(releaseKeyPassword)
+                storeType = "PKCS12"
+            }
+        }
+    }
+
     buildTypes {
         debug { isMinifyEnabled = false }
         release {
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
