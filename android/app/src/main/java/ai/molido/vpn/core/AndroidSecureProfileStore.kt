@@ -94,10 +94,14 @@ class AndroidSecureProfileStore(context: Context) {
         cipher.init(Cipher.ENCRYPT_MODE, encryptionKey())
         cipher.updateAAD(AAD)
         val encrypted = cipher.doFinal(plain)
-        return ByteBuffer.allocate(cipher.iv.size + encrypted.size)
-            .put(cipher.iv)
-            .put(encrypted)
-            .array()
+        return try {
+            ByteBuffer.allocate(cipher.iv.size + encrypted.size)
+                .put(cipher.iv)
+                .put(encrypted)
+                .array()
+        } finally {
+            encrypted.fill(0)
+        }
     }
 
     private fun decrypt(encoded: ByteArray): ByteArray {
