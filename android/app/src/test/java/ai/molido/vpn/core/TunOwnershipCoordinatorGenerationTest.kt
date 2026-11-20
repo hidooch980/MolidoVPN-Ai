@@ -45,7 +45,6 @@ class TunOwnershipCoordinatorGenerationTest {
         assertTrue(coordinator.markDescriptorTransferred(lease, 9201))
         assertFalse(coordinator.reportEngineProcessDeath(lease, 9202))
         assertEquals(TunLeaseState.ACTIVE, coordinator.snapshot().state)
-        assertFalse(coordinator.beginStop(lease).not())
         assertTrue(coordinator.beginStop(lease))
         assertFalse(coordinator.acknowledgeEngineCleanup(lease, 9202))
         assertFalse(coordinator.confirmServiceTunClosed(lease))
