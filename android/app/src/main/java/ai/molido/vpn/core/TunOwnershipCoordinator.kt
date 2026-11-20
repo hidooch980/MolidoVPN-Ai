@@ -26,7 +26,7 @@ enum class TunLeaseTransport {
 data class TunLeaseToken(
     val engine: EngineSlot,
     val generation: Long,
-    val transport: TunLeaseTransport
+    val transport: TunLeaseTransport = TunLeaseTransport.DESCRIPTOR_HANDOFF
 )
 
 data class TunLeaseSnapshot(
