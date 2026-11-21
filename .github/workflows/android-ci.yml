@@ -295,15 +295,10 @@ jobs:
     steps:
       - name: Checkout Molido
         uses: actions/checkout@v4
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - name: Set up Android SDK and native toolchain
+      - name: Set up Android NDK
         uses: android-actions/setup-android@v3
         with:
-          packages: platform-tools platforms;android-36 build-tools;36.0.0 ndk;27.2.12479018 cmake;3.22.1
+          packages: ndk;27.2.12479018
       - name: Build exact upstream source with Go engine only
         shell: bash
         run: bash scripts/ci/build-wireguard-go-only.sh
