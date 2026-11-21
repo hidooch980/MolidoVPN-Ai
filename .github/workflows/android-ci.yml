@@ -235,6 +235,7 @@ jobs:
           fi
           adb devices -l
       - name: Run Android Keystore instrumentation tests
+        timeout-minutes: 20
         shell: bash
         run: |
           set -euo pipefail
