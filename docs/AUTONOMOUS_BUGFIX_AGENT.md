@@ -10,14 +10,14 @@ The agent is wired into the Android CI pipeline. It inspects failed jobs, downlo
 2. Classify each failed job as transient infrastructure, code/test failure, or unknown.
 3. Retry failed jobs exactly once only when every failed job is positively classified as transient infrastructure and the run is on its first attempt.
 4. For code/test, unknown, mixed, or repeat failures, create or reuse one GitHub issue per run. The issue includes the commit, workflow/run links, job links, classification, and bounded log excerpts.
-5. Run six unit tests for classification on every CI execution.
+5. Run eight unit tests for classification and secret redaction on every CI execution.
 
 ## Safety boundaries
 
 - No application source-code patch is generated or applied by this first version.
 - No automatic merge, release, APK publication, signing-key access, secret rotation, paid API/model, external server, or runtime service is used.
 - No automatic retry is made for compilation, assertion, instrumentation, or security failures.
-- An unknown or mixed failure is treated as not safe to retry.
+- An unknown or mixed failure is treated as not safe to retry.\n- Log retrieval strips the GitHub authorization header on cross-host redirects; issue excerpts redact private-key blocks, token patterns, and common password/secret assignments.
 - The agent does not claim a bug is fixed merely because a retry passes; the original failure and recovery are both visible in Actions.
 - The issue creation uses the repository's GitHub Actions token and requires the `actions: write` and `issues: write` job permissions.
 
