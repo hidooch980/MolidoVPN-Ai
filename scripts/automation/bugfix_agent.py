@@ -206,17 +206,20 @@ def main() -> int:
         return 0
     reports = []
     for job in failed:
+        diagnostic_text = ""
         try:
             log = download_job_log(job["id"])
+            diagnostic_text = log
             classification, excerpt = classify_log(log), log[-12000:]
         except Exception as exc:
             classification = "unknown"
             excerpt = f"Unable to retrieve job log: {type(exc).__name__}: {exc}"
+            diagnostic_text = excerpt
         reports.append({
             "id": job["id"], "name": job.get("name", "unnamed job"),
             "url": job.get("html_url", ""), "classification": classification,
             "excerpt": redact_secrets(excerpt),
-            "diagnosis": diagnose_log(excerpt),
+            "diagnosis": diagnose_log(diagnostic_text),
         })
     all_transient = all(r["classification"] == "transient_infrastructure" for r in reports)
     if all_transient and RUN_ATTEMPT < 2:
