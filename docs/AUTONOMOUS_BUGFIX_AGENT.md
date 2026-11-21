@@ -7,7 +7,8 @@ The agent is wired into the Android CI pipeline. It inspects failed jobs, downlo
 ## Current automatic actions
 
 1. Read the completed run and all failed job logs.
-2. Classify each failed job as transient infrastructure, code/test failure, or unknown.\n3. Match known Android, Gradle, Emulator, WireGuard native-build, and signing failures to a conservative diagnosis, exact log evidence, and a bounded remediation recommendation. Unknown errors remain explicitly unclassified.
+2. Classify each failed job as transient infrastructure, code/test failure, or unknown.
+3. Match known Android, Gradle, Emulator, WireGuard native-build, and signing failures to a conservative diagnosis, exact log evidence, and a bounded remediation recommendation. Unknown errors remain explicitly unclassified.
 4. Retry failed jobs exactly once only when every failed job is positively classified as transient infrastructure and the run is on its first attempt.
 5. For code/test, unknown, mixed, or repeat failures, create or reuse one GitHub issue per run. The issue includes the commit, workflow/run links, job links, classification, and bounded log excerpts.
 6. Run twelve unit tests for classification, secret redaction, and root-cause diagnosis on every CI execution.
@@ -17,7 +18,8 @@ The agent is wired into the Android CI pipeline. It inspects failed jobs, downlo
 - No speculative application source-code patch is generated or applied by this version. Root-cause guidance is diagnostic only; source-level auto-repair remains gated until a safe, testable patch policy exists.
 - No automatic merge, release, APK publication, signing-key access, secret rotation, paid API/model, external server, or runtime service is used.
 - No automatic retry is made for compilation, assertion, instrumentation, or security failures.
-- An unknown or mixed failure is treated as not safe to retry.\n- Log retrieval strips the GitHub authorization header on cross-host redirects; issue excerpts redact private-key blocks, token patterns, and common password/secret assignments.
+- An unknown or mixed failure is treated as not safe to retry.
+- Log retrieval strips the GitHub authorization header on cross-host redirects; issue excerpts redact private-key blocks, token patterns, and common password/secret assignments.
 - The agent does not claim a bug is fixed merely because a retry passes; the original failure and recovery are both visible in Actions.
 - The issue creation uses the repository's GitHub Actions token and requires the `actions: write` and `issues: write` job permissions.
 
