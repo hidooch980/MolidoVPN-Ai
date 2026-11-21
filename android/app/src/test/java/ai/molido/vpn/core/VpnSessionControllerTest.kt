@@ -408,4 +408,78 @@ class VpnSessionControllerTest {
         assertEquals(TunLeaseState.IDLE, coordinator.snapshot().state)
     }
 
+    @Test
+    fun disconnectRetainsSessionHandleUntilSharedLeaseReleaseIsConfirmed() {
+        val coordinator = TunOwnershipCoordinator()
+        val supervisor = SessionSupervisor(coordinator)
+        var stopCalls = 0
+        val adapter = object : TunLeaseAwareEngineAdapter {
+            override val slot = EngineSlot.WIREGUARD
+            override fun start(configuration: String, lease: TunLeaseToken): EngineSession {
+                assertTrue(coordinator.markBackendActive(lease))
+                return object : EngineSession {
+                    override fun stop() {
+                        stopCalls += 1
+                        assertTrue(coordinator.beginStop(lease))
+                        // Simulate a backend whose first stop acknowledgement is incomplete.
+                        if (stopCalls == 2) {
+                            assertTrue(coordinator.confirmBackendStopped(lease))
+                        }
+                    }
+                }
+            }
+        }
+        val controller = VpnSessionController(supervisor, listOf(adapter))
+
+        assertTrue(controller.connect(EngineSlot.WIREGUARD, "profile"))
+        assertFalse(controller.disconnect())
+        assertEquals(1, stopCalls)
+        assertEquals(SessionState.FAILED, controller.snapshot().state)
+        assertEquals(EngineSlot.WIREGUARD, supervisor.currentOwner())
+        assertEquals(TunLeaseState.STOPPING, coordinator.snapshot().state)
+
+        assertTrue(controller.disconnect())
+        assertEquals(2, stopCalls)
+        assertEquals(SessionState.IDLE, controller.snapshot().state)
+        assertEquals(TunLeaseState.IDLE, coordinator.snapshot().state)
+        assertNull(supervisor.currentOwner())
+    }
+
+    @Test
+    fun recoveryRetainsCleanupHandleWhenLeaseReleaseIsNotConfirmed() {
+        val coordinator = TunOwnershipCoordinator()
+        val supervisor = SessionSupervisor(coordinator)
+        var stopCalls = 0
+        val adapter = object : TunLeaseAwareEngineAdapter {
+            override val slot = EngineSlot.WIREGUARD
+            override fun start(configuration: String, lease: TunLeaseToken): EngineSession {
+                assertTrue(coordinator.markBackendActive(lease))
+                return object : EngineSession {
+                    override fun stop() {
+                        stopCalls += 1
+                        assertTrue(coordinator.beginStop(lease))
+                        if (stopCalls == 2) {
+                            assertTrue(coordinator.confirmBackendStopped(lease))
+                        }
+                    }
+                }
+            }
+        }
+        val controller = VpnSessionController(
+            supervisor,
+            listOf(adapter),
+            networkAssessmentProvider = { NetworkAssessment(NetworkAssessmentStatus.VALIDATED) }
+        )
+
+        assertTrue(controller.connect(EngineSlot.WIREGUARD, "profile"))
+        assertTrue(controller.reportActiveEngineFailure())
+        assertEquals(RecoveryAction.NONE, controller.prepareRecovery(0).action)
+        assertEquals(SessionState.FAILED, controller.snapshot().state)
+        assertEquals(EngineSlot.WIREGUARD, supervisor.currentOwner())
+        assertEquals(RecoveryAction.SCHEDULE_RETRY, controller.prepareRecovery(0).action)
+        assertEquals(2, stopCalls)
+        assertEquals(SessionState.IDLE, controller.snapshot().state)
+        assertEquals(TunLeaseState.IDLE, coordinator.snapshot().state)
+    }
+
 }
