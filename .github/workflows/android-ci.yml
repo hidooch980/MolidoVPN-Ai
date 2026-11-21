@@ -136,6 +136,7 @@ jobs:
             --device pixel_2
       - name: Boot emulator with software acceleration
         shell: bash
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           adb start-server
@@ -143,14 +144,33 @@ jobs:
             -no-window -gpu swiftshader_indirect -no-snapshot -noaudio \
             -no-boot-anim -camera-back none -no-metrics -accel off \
             > "$RUNNER_TEMP/molido-emulator.log" 2>&1 &
-          echo $! > "$RUNNER_TEMP/molido-emulator.pid"
-          adb wait-for-device
+          emulator_pid=$!
+          echo "$emulator_pid" > "$RUNNER_TEMP/molido-emulator.pid"
+
+          # Bound the ADB transport wait: adb wait-for-device otherwise has no
+          # deadline and can keep this step alive without ever reaching boot checks.
+          if ! timeout 120s adb wait-for-device; then
+            echo "ADB did not detect the emulator within 120 seconds."
+            tail -n 250 "$RUNNER_TEMP/molido-emulator.log" || true
+            exit 1
+          fi
+
           booted=0
           for attempt in $(seq 1 900); do
-            state="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then
+              echo "Emulator process exited before Android completed boot."
+              tail -n 250 "$RUNNER_TEMP/molido-emulator.log" || true
+              exit 1
+            fi
+            state="$(timeout 15s adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
             if [ "$state" = "1" ]; then
               booted=1
               break
+            fi
+            if [ $((attempt % 30)) -eq 0 ]; then
+              echo "Waiting for Android boot: ${attempt}s elapsed."
+              adb devices -l || true
+              tail -n 60 "$RUNNER_TEMP/molido-emulator.log" || true
             fi
             sleep 1
           done
@@ -159,8 +179,8 @@ jobs:
             tail -n 250 "$RUNNER_TEMP/molido-emulator.log" || true
             exit 1
           fi
-          adb shell getprop ro.build.version.sdk
-          adb shell getprop sys.boot_completed
+          timeout 15s adb shell getprop ro.build.version.sdk
+          timeout 15s adb shell getprop sys.boot_completed
           adb devices -l
       - name: Run Android Keystore instrumentation tests
         shell: bash
