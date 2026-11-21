@@ -51,8 +51,14 @@ def api(method: str, path: str, body: dict[str, Any] | None = None) -> Any:
 class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
-        if redirected and urlparse(newurl).netloc != urlparse(req.full_url).netloc:
-            redirected.remove_header("Authorization")
+        if redirected:
+            source = urlparse(req.full_url)
+            target = urlparse(newurl)
+            # Never forward a bearer token across hosts, ports, or an HTTPS
+            # downgrade. Signed storage redirects are expected to be separate
+            # hosts and must receive no GitHub Authorization header.
+            if target.netloc != source.netloc or target.scheme.lower() != "https":
+                redirected.remove_header("Authorization")
         return redirected
 
 
