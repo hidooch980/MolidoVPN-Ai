@@ -31,7 +31,7 @@ add_custom_target(libwg-go.so
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/libwg-go"
     COMMENT "Building pinned wireguard-go userspace library"
     VERBATIM
-    COMMAND "${ANDROID_HOST_PREBUILTS}/bin/make"
+    COMMAND "make"
         ANDROID_ARCH_NAME=${ANDROID_ARCH_NAME}
         ANDROID_PACKAGE_NAME=${ANDROID_PACKAGE_NAME}
         GRADLE_USER_HOME=${GRADLE_USER_HOME}
@@ -59,7 +59,33 @@ path.write_text(text.replace(old, new))
 PY
 
 cd "$WORK_DIR"
-./gradlew --no-daemon :tunnel:assembleRelease
+build_log="$WORK_DIR/molido-go-only-build.log"
+build_succeeded=0
+for attempt in 1 2 3; do
+  echo "WireGuard source build attempt $attempt/3"
+  if ./gradlew --no-daemon :tunnel:assembleRelease 2>&1 | tee "$build_log"; then
+    build_succeeded=1
+    break
+  else
+    build_status=$?
+  fi
+
+  # Retry only transient dependency/repository transport failures. Never retry
+  # compilation, CMake, source, assertion, or packaging failures.
+  if grep -Eqi 'HTTP 429|status code: 429|Received status code 429|HTTP 5[0-9][0-9]|status code: 5[0-9][0-9]|Temporary failure in name resolution|Connection reset|Read timed out|Connection timed out' "$build_log"; then
+    if [ "$attempt" -lt 3 ]; then
+      delay=$((attempt * 20))
+      echo "Transient repository/network failure detected; retrying after ${delay}s."
+      sleep "$delay"
+      continue
+    fi
+  fi
+  exit "$build_status"
+done
+if [ "$build_succeeded" -ne 1 ]; then
+  echo "WireGuard Go-only source build did not succeed after bounded retries."
+  exit 1
+fi
 
 aar="$WORK_DIR/tunnel/build/outputs/aar/tunnel-release.aar"
 test -s "$aar"
