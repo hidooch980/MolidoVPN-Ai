@@ -92,4 +92,48 @@ class SessionSupervisorTest {
         assertTrue(supervisor.claim(EngineSlot.TOR))
         assertEquals(2L, supervisor.snapshot().generation)
     }
+
+    @Test
+    fun sharedCoordinatorLeaseMustBeActivatedAndCleanedBeforeSupervisorRelease() {
+        val coordinator = TunOwnershipCoordinator()
+        val supervisor = SessionSupervisor(coordinator)
+
+        assertTrue(supervisor.claim(EngineSlot.WIREGUARD))
+        val lease = supervisor.tunLeaseFor(EngineSlot.WIREGUARD)!!
+        assertTrue(coordinator.isReserved(lease))
+        assertFalse(supervisor.markRunning(EngineSlot.WIREGUARD))
+
+        assertTrue(coordinator.markBackendActive(lease))
+        assertTrue(supervisor.markRunning(EngineSlot.WIREGUARD))
+        assertTrue(supervisor.beginStopping(EngineSlot.WIREGUARD))
+        assertEquals(TunLeaseState.STOPPING, coordinator.snapshot().state)
+        assertTrue(coordinator.confirmBackendStopped(lease))
+        assertTrue(supervisor.release(EngineSlot.WIREGUARD))
+        assertEquals(SessionState.IDLE, supervisor.snapshot().state)
+        assertEquals(TunLeaseState.IDLE, coordinator.snapshot().state)
+    }
+
+    @Test
+    fun supervisorCannotReleaseSharedLeaseBeforeTransportCleanup() {
+        val coordinator = TunOwnershipCoordinator()
+        val supervisor = SessionSupervisor(coordinator)
+
+        assertTrue(supervisor.claim(EngineSlot.WIREGUARD))
+        assertFalse(supervisor.release(EngineSlot.WIREGUARD))
+        assertEquals(EngineSlot.WIREGUARD, coordinator.snapshot().owner)
+        assertFalse(supervisor.claim(EngineSlot.TOR))
+    }
+
+    @Test
+    fun startupReservationCanBeRolledBackOnlyBeforeTransportActivation() {
+        val coordinator = TunOwnershipCoordinator()
+        val supervisor = SessionSupervisor(coordinator)
+
+        assertTrue(supervisor.claim(EngineSlot.WIREGUARD))
+        assertTrue(supervisor.markFailed(EngineSlot.WIREGUARD))
+        assertTrue(supervisor.releaseUnstartedReservation(EngineSlot.WIREGUARD))
+        assertEquals(TunLeaseState.IDLE, coordinator.snapshot().state)
+        assertEquals(SessionState.IDLE, supervisor.snapshot().state)
+    }
+
 }
