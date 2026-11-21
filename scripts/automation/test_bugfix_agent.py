@@ -1,6 +1,9 @@
 import importlib.util
 import os
 import unittest
+import zipfile
+from io import BytesIO
+from urllib.request import Request
 
 os.environ.setdefault("GITHUB_REPOSITORY", "owner/repo")
 os.environ.setdefault("GITHUB_TOKEN", "test-token")
@@ -110,6 +113,40 @@ class BugFixAgentClassificationTests(unittest.TestCase):
         result = agent.redact_secrets("AWS_ACCESS_KEY_ID=AKIA1234567890ABCDEF")
         self.assertNotIn("AKIA1234567890ABCDEF", result)
         self.assertIn("[REDACTED AWS KEY]", result)
+
+
+    def test_log_archive_extracts_only_text_logs(self):
+        buffer = BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("job.txt", "AssertionError: sample")
+            archive.writestr("metadata.json", "{secret: should-not-be-read}")
+            archive.writestr("nested/runner.log", "runner finished")
+        extracted = agent.extract_job_log(buffer.getvalue())
+        self.assertIn("AssertionError: sample", extracted)
+        self.assertIn("runner finished", extracted)
+        self.assertNotIn("should-not-be-read", extracted)
+
+    def test_cross_host_log_redirect_drops_authorization(self):
+        request = Request("https://api.github.com/logs")
+        request.add_header("Authorization", "Bearer sensitive-token")
+        handler = agent.SafeRedirectHandler()
+        redirected = handler.redirect_request(
+            request, None, 302, "Found", {}, "https://storage.example/logs.zip"
+        )
+        self.assertIsNotNone(redirected)
+        self.assertIsNone(redirected.get_header("Authorization"))
+
+    def test_same_host_redirect_preserves_authorization(self):
+        request = Request("https://api.github.com/logs")
+        request.add_header("Authorization", "Bearer sensitive-token")
+        handler = agent.SafeRedirectHandler()
+        redirected = handler.redirect_request(
+            request, None, 302, "Found", {}, "https://api.github.com/next"
+        )
+        self.assertIsNotNone(redirected)
+        self.assertEqual(
+            redirected.get_header("Authorization"), "Bearer sensitive-token"
+        )
 
 
 if __name__ == "__main__":
