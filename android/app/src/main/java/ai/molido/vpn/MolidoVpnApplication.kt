@@ -10,12 +10,15 @@ import ai.molido.vpn.core.AndroidUpdateInstaller
 import ai.molido.vpn.core.ControlPlaneClient
 import ai.molido.vpn.core.ControlPlaneFetchResult
 import ai.molido.vpn.core.DiagnosticsObservabilityCore
+import ai.molido.vpn.core.EngineCapability
+import ai.molido.vpn.core.EngineCapabilityCatalog
 import ai.molido.vpn.core.NetworkAssessment
 import ai.molido.vpn.core.NetworkIntelligenceCore
 import ai.molido.vpn.core.NetworkObservation
 import ai.molido.vpn.core.NetworkPolicy
 import ai.molido.vpn.core.NetworkPolicySettingsStore
 import ai.molido.vpn.core.SessionSupervisor
+import ai.molido.vpn.core.TunOwnershipCoordinator
 import ai.molido.vpn.core.VpnSessionController
 import ai.molido.vpn.engine.wireguard.WireGuardEngineAdapter
 import java.util.concurrent.ExecutorService
@@ -28,6 +31,14 @@ class MolidoVpnApplication : Application() {
     lateinit var vpnExecutor: ExecutorService
         private set
     lateinit var networkMonitor: AndroidNetworkObservationMonitor
+        private set
+    /** Live capability list; entries are derived from adapters actually wired at runtime. */
+    lateinit var engineCapabilities: List<EngineCapability>
+        private set
+    lateinit var wireGuardAdapter: WireGuardEngineAdapter
+        private set
+    /** Shared single-TUN lease coordinator; all future engine adapters must receive this instance. */
+    lateinit var tunOwnershipCoordinator: TunOwnershipCoordinator
         private set
 
     private val observation = AtomicReference<NetworkObservation?>(null)
@@ -70,9 +81,13 @@ class MolidoVpnApplication : Application() {
         vpnExecutor = Executors.newSingleThreadExecutor { task ->
             Thread(task, "molido-vpn-control").apply { isDaemon = true }
         }
+        tunOwnershipCoordinator = TunOwnershipCoordinator()
+        wireGuardAdapter = WireGuardEngineAdapter(this, tunOwnershipCoordinator)
+        val registeredAdapters = listOf(wireGuardAdapter)
+        engineCapabilities = EngineCapabilityCatalog.build(registeredAdapters)
         vpnSessions = VpnSessionController(
             supervisor = SessionSupervisor(),
-            adapters = listOf(WireGuardEngineAdapter(this)),
+            adapters = registeredAdapters,
             networkAssessmentProvider = { latestNetworkAssessment() },
             networkPolicyProvider = { selectedNetworkPolicy.get() },
             diagnostics = diagnostics

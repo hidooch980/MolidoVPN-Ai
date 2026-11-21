@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - development/molido-vpn-ai-from-scratch
+      - feature/optional-warp-wireguard-enrollment
   pull_request:
     branches:
       - development/molido-vpn-ai-from-scratch
@@ -14,7 +15,7 @@ permissions:
 
 concurrency:
   group: android-ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   validate:
@@ -73,6 +74,7 @@ jobs:
           done
           exit 1
 
+
   backend:
     name: Test self-hosted control plane
     runs-on: ubuntu-24.04
@@ -96,7 +98,9 @@ jobs:
   android-keystore-instrumentation:
     name: Android Keystore instrumentation (emulator)
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 55
+    env:
+      ANDROID_EMULATOR_WAIT_TIME_BEFORE_KILL: "60"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -109,21 +113,92 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Run Android Keystore instrumentation tests
-        uses: reactivecircus/android-emulator-runner@v2
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
         with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          channel: stable
-          emulator-boot-timeout: 900
-          disable-animations: true
-          cores: 2
-          ram-size: 3072
-          heap-size: 512
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          script: gradle --no-daemon :android:app:connectedDebugAndroidTest
+          packages: platform-tools
+      - name: Install emulator image and create AVD
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Keep pipefail for later commands, but let sdkmanager determine the license step status.
+          set +o pipefail
+          yes | sdkmanager --licenses >/dev/null
+          set -o pipefail
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "emulator" \
+            "system-images;android-35;google_apis;x86_64"
+          echo "no" | avdmanager create avd \
+            --name molido-ci-api35 \
+            --package "system-images;android-35;google_apis;x86_64" \
+            --device pixel_2
+      - name: Boot emulator with software acceleration
+        shell: bash
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          adb start-server
+          nohup emulator -avd molido-ci-api35 \
+            -no-window -gpu swiftshader_indirect -no-snapshot -noaudio \
+            -no-boot-anim -camera-back none -no-metrics -accel off \
+            > "$RUNNER_TEMP/molido-emulator.log" 2>&1 &
+          emulator_pid=$!
+          echo "$emulator_pid" > "$RUNNER_TEMP/molido-emulator.pid"
+
+          # Bound the ADB transport wait: adb wait-for-device otherwise has no
+          # deadline and can keep this step alive without ever reaching boot checks.
+          if ! timeout 120s adb wait-for-device; then
+            echo "ADB did not detect the emulator within 120 seconds."
+            tail -n 250 "$RUNNER_TEMP/molido-emulator.log" || true
+            exit 1
+          fi
+
+          booted=0
+          for attempt in $(seq 1 900); do
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then
+              echo "Emulator process exited before Android completed boot."
+              tail -n 250 "$RUNNER_TEMP/molido-emulator.log" || true
+              exit 1
+            fi
+            state="$(timeout 15s adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+            if [ "$state" = "1" ]; then
+              booted=1
+              break
+            fi
+            if [ $((attempt % 30)) -eq 0 ]; then
+              echo "Waiting for Android boot: ${attempt}s elapsed."
+              adb devices -l || true
+              tail -n 60 "$RUNNER_TEMP/molido-emulator.log" || true
+            fi
+            sleep 1
+          done
+          if [ "$booted" -ne 1 ]; then
+            echo "Emulator did not complete boot within 900 seconds."
+            tail -n 250 "$RUNNER_TEMP/molido-emulator.log" || true
+            exit 1
+          fi
+          timeout 15s adb shell getprop ro.build.version.sdk
+          timeout 15s adb shell getprop sys.boot_completed
+          adb devices -l
+      - name: Run Android Keystore instrumentation tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :android:app:connectedDebugAndroidTest
+      - name: Collect emulator diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          adb devices -l || true
+          adb logcat -d -t 1200 || true
+          tail -n 300 "$RUNNER_TEMP/molido-emulator.log" || true
+      - name: Stop emulator
+        if: always()
+        shell: bash
+        run: |
+          adb emu kill || true
 
   signed-release:
     name: Build and verify signed Android release
