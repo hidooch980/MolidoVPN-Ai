@@ -61,5 +61,25 @@ class BugFixAgentClassificationTests(unittest.TestCase):
         self.assertNotIn("super-secret", result)
 
 
+    def test_emulator_failure_gets_specific_diagnosis(self):
+        result = agent.diagnose_log("Emulator did not complete boot; /dev/kvm missing")
+        self.assertEqual(result["category"], "emulator_boot_or_kvm")
+        self.assertIn("KVM", result["recommended_action"])
+
+    def test_wireguard_native_failure_gets_specific_diagnosis(self):
+        result = agent.diagnose_log("ld: undefined reference while linking libwg-go.so")
+        self.assertEqual(result["category"], "wireguard_native_build")
+
+    def test_signing_failure_never_suggests_key_rotation(self):
+        result = agent.diagnose_log("Signer #1 certificate mismatch")
+        self.assertEqual(result["category"], "signing_or_keystore")
+        self.assertIn("Do not rotate", result["recommended_action"])
+
+    def test_unknown_diagnosis_does_not_invent_root_cause(self):
+        result = agent.diagnose_log("unexpected process exit 17")
+        self.assertEqual(result["category"], "unknown")
+        self.assertIn("not established", result["diagnosis"])
+
+
 if __name__ == "__main__":
     unittest.main()
