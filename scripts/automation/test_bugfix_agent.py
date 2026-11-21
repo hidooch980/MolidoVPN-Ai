@@ -52,7 +52,7 @@ class BugFixAgentClassificationTests(unittest.TestCase):
 
 
     def test_private_key_is_redacted_from_issue_excerpt(self):
-        sample = "-----BEGIN PRIVATE KEY-----\\nsecret-material\\n-----END PRIVATE KEY-----"
+        sample = "-----BEGIN PRIVATE KEY-----\nsecret-material\n-----END PRIVATE KEY-----"
         result = agent.redact_secrets(sample)
         self.assertNotIn("secret-material", result)
         self.assertIn("[REDACTED PRIVATE KEY]", result)
@@ -179,9 +179,9 @@ class PatchPolicyTests(unittest.TestCase):
     def _plan(self, path="scripts/automation/fix_rule.py", additions=3, deletions=1):
         return {
             "files": [{"path": path, "additions": additions, "deletions": deletions}],
-            "diff": (f"diff --git a/{path} b/{path}\\n--- a/{path}\\n+++ b/{path}\\n"
-                     + "".join("+added\\n" for _ in range(additions))
-                     + "".join("-removed\\n" for _ in range(deletions))),
+            "diff": (f"diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n"
+                     + "".join("+added\n" for _ in range(additions))
+                     + "".join("-removed\n" for _ in range(deletions))),
         }
 
     def test_allows_small_allowlisted_automation_proposal(self):
@@ -238,7 +238,7 @@ class PatchPolicyTests(unittest.TestCase):
     def test_rejects_diff_line_count_mismatch(self):
         from scripts.automation.patch_policy import validate_patch_plan
         p = self._plan()
-        p["diff"] = p["diff"].replace("+added\\n", "", 1)
+        p["diff"] = p["diff"].replace("+added\n", "", 1)
         self.assertEqual(validate_patch_plan(p)[1], "diff_line_count_mismatch")
 
     def test_rejects_malformed_diff_headers(self):
