@@ -194,6 +194,16 @@ class BugFixAgentClassificationTests(unittest.TestCase):
             redirected.get_header("Authorization"), "Bearer sensitive-token"
         )
 
+    def test_https_downgrade_redirect_drops_authorization(self):
+        request = Request("https://api.github.com/logs")
+        request.add_header("Authorization", "Bearer sensitive-token")
+        handler = agent.SafeRedirectHandler()
+        redirected = handler.redirect_request(
+            request, None, 302, "Found", {}, "http://api.github.com/next"
+        )
+        self.assertIsNotNone(redirected)
+        self.assertIsNone(redirected.get_header("Authorization"))
+
 
 if __name__ == "__main__":
     unittest.main()
