@@ -8,7 +8,7 @@ Execution status: no code was built or run; no APK was installed; no server or D
 
 - Upstream core: https://github.com/masterking32/MasterDnsVPN
   - inspected main tree at `7198b45b86c7def2e226e41bcca3eca8ca2ea502`
-  - license: MIT (`LICENSE`, blob `8d...` not copied here)
+  - license: MIT (`LICENSE`).
   - Go module declares Go 1.25.0.
 - Community Android wrapper: https://github.com/Hidden-Node/MasterDnsVPN-AndroidClient
   - inspected main tree at `167312c99253f2d593b2444372eed75c6215c1e4`
