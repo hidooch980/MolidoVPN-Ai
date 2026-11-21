@@ -366,12 +366,13 @@ jobs:
 
   autonomous-bugfix-agent:
     name: Autonomous CI bug-fix agent
-    if: always() && (needs.validate.result == 'failure' || needs.backend.result == 'failure' || needs.android-keystore-instrumentation.result == 'failure' || needs.wireguard-source-build.result == 'failure')
+    if: always() && (needs.validate.result == 'failure' || needs.backend.result == 'failure' || needs.android-keystore-instrumentation.result == 'failure' || needs.wireguard-source-build.result == 'failure' || needs.signed-release.result == 'failure')
     needs:
       - validate
       - backend
       - android-keystore-instrumentation
       - wireguard-source-build
+      - signed-release
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
