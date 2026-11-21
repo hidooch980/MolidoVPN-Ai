@@ -226,7 +226,7 @@ class PatchPolicyTests(unittest.TestCase):
     def test_rejects_diff_path_mismatch(self):
         from scripts.automation.patch_policy import validate_patch_plan
         p = self._plan()
-        p["diff"] = "diff --git a/other b/other\n--- a/other\n+++ b/other\n"
+        p["diff"] = "diff --git a/docs/automation/other.md b/docs/automation/other.md\n--- a/docs/automation/other.md\n+++ b/docs/automation/other.md\n"
         self.assertEqual(validate_patch_plan(p)[1], "diff_paths_mismatch")
 
     def test_rejects_binary_diff(self):
