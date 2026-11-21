@@ -45,7 +45,7 @@ def api(method: str, path: str, body: dict[str, Any] | None = None) -> Any:
         "User-Agent": "MolidoVPN-Autonomous-BugFix-Agent",
     })
     with urllib.request.urlopen(req, timeout=45) as response:
-        raw = response.read()
+        raw = read_bounded_api_response(response)
         return json.loads(raw) if raw else None
 
 class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -60,6 +60,26 @@ class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
             if target.netloc != source.netloc or target.scheme.lower() != "https":
                 redirected.remove_header("Authorization")
         return redirected
+
+
+MAX_API_RESPONSE_BYTES = 5 * 1024 * 1024
+
+
+def read_bounded_api_response(response: Any) -> bytes:
+    """Read a bounded GitHub API response and reject oversized payloads."""
+    raw = response.read(MAX_API_RESPONSE_BYTES + 1)
+    if len(raw) > MAX_API_RESPONSE_BYTES:
+        raise ValueError("GitHub API response exceeds size limit")
+    return raw
+
+
+def http_error_summary(exc: urllib.error.HTTPError) -> str:
+    """Return a bounded, redacted HTTP error summary for CI logs."""
+    try:
+        body = exc.read(2048).decode("utf-8", errors="replace")
+    except Exception:
+        body = ""
+    return redact_secrets(body)[:2000]
 
 
 MAX_LOG_ARCHIVE_BYTES = 20 * 1024 * 1024
@@ -307,7 +327,7 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except urllib.error.HTTPError as exc:
-        print(f"BugFix Agent API error: HTTP {exc.code}: {exc.read().decode(errors='replace')[:2000]}", file=sys.stderr)
+        print(f"BugFix Agent API error: HTTP {exc.code}: {http_error_summary(exc)}", file=sys.stderr)
         sys.exit(1)
     except Exception as exc:
         print(f"BugFix Agent failed closed: {type(exc).__name__}: {exc}", file=sys.stderr)
