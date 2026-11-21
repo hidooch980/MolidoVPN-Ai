@@ -41,7 +41,7 @@ The official upstream GitHub API was inspected for candidate tag `1.0.20260315`:
 The candidate `GoBackend.java` confirms the integration boundary:
 - `wgTurnOn(String ifName, int tunFd, String settings)` is a private native method.
 - The current UP path builds the TUN with `VpnService.Builder.establish()`, detaches its descriptor into `wgTurnOn`, then calls `service.protect()` for the WireGuard IPv4 and IPv6 sockets.
-- The public backend API does not expose caller-supplied TUN FD injection. A Molido-owned service therefore requires a source-level, reviewed backend/JNI change and an explicit socket-protection callback/path; it cannot be achieved by merely passing a descriptor to the existing AAR API.
+- The public Backend API does not expose caller-supplied TUN FD injection, but the upstream native boundary already accepts one: private Java native method `wgTurnOn(String ifName, int tunFd, String settings)` forwards the descriptor through `jni.c` to Go `wgTurnOn`, which attaches with `tun.CreateUnmonitoredTUNFromFD`. Therefore no JNI or Go signature change is inherently required. A source-built fork can expose a narrowly scoped Java method that accepts a duplicated descriptor from MolidoVpnService, invokes the existing native method, and asks the central VpnService to protect the returned IPv4/IPv6 sockets. The upstream Java wrapper currently hides this capability and creates its own TUN with `Builder.establish()`, so the wrapper and merged manifest still require a reviewed source-level change. The service must retain its original descriptor; the duplicate is transferred to Go and is closed by `wgTurnOff`/Go device cleanup.
 
 
 The recursive upstream tree also contains these pinned gitlinks:
@@ -52,6 +52,13 @@ The recursive upstream tree also contains these pinned gitlinks:
 | `tunnel/tools/elf-cleaner` | `7efc05090675ec6161b7def862728086a26c3b1f` | Upstream README identifies GPL-3.0-or-later; used as a build-time ELF post-processing tool | Not a runtime engine; include license/source notices if source bundle or build environment redistributes it. |
 
 This means the tunnel module's Apache-2.0 POM/COPYING does **not** describe every component used by its native build. The GPL-2 and GPL-3-or-later components must remain separately inventoried; do not claim the complete native bundle is Apache-2.0-only. No legal compatibility conclusion is made here.
+
+
+## Verified native FD ownership semantics
+
+The pinned `api-android.go` implementation calls `tun.CreateUnmonitoredTUNFromFD(int(tunFd))`. On attach failure it closes the supplied descriptor; after successful attach, the Go TUN device owns that descriptor and `wgTurnOff` calls `device.Close()`. The Java layer must therefore pass a duplicated FD, never the service's retained original. A successful stop acknowledgement is valid only after `wgTurnOff` returns and the engine-side duplicate has been closed; the central service then closes its original descriptor and confirms lease release.
+
+The current upstream Java wrapper calls `wgTurnOn` and then obtains the IPv4/IPv6 socket descriptors and invokes `VpnService.protect()`. A Molido wrapper must keep this socket-protection step bound to the central service, check protection results for valid descriptors, and fail closed if protection cannot be confirmed. This mirrors the upstream ordering; it is not an independent proof against packet leakage and must be covered by device tests.
 
 No upstream source, dependency, manifest, or runtime code was changed by this provenance/API review.
 
