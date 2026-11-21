@@ -71,7 +71,7 @@ build_abi "x86_64" "x86_64" "x86_64-linux-android$ANDROID_API"
 check_machine() {
   local abi="$1"
   local expected="$2"
-  if ! grep -Fq "Machine:                           $expected" "$OUT/$abi/elf-header.txt"; then
+  if ! grep -Eq "Machine:[[:space:]]+$expected$" "$OUT/$abi/elf-header.txt"; then
     echo "Unexpected ELF machine for $abi"
     cat "$OUT/$abi/elf-header.txt"
     exit 1
