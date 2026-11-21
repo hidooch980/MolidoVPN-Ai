@@ -157,7 +157,7 @@ class PatchPolicyTests(unittest.TestCase):
     def _plan(self, path="scripts/automation/fix_rule.py", additions=3, deletions=1):
         return {
             "files": [{"path": path, "additions": additions, "deletions": deletions}],
-            "diff": f"diff --git a/{path} b/{path}\\n+++ b/{path}\\n+safe\\n",
+            "diff": f"diff --git a/{path} b/{path}\n+++ b/{path}\n+safe\n",
         }
 
     def test_allows_small_allowlisted_automation_proposal(self):
@@ -202,7 +202,7 @@ class PatchPolicyTests(unittest.TestCase):
     def test_rejects_diff_path_mismatch(self):
         from scripts.automation.patch_policy import validate_patch_plan
         p = self._plan()
-        p["diff"] = "diff --git a/other b/other\\n+++ b/other\\n"
+        p["diff"] = "diff --git a/other b/other\n+++ b/other\n"
         self.assertEqual(validate_patch_plan(p)[1], "diff_paths_mismatch")
 
     def test_rejects_binary_diff(self):
