@@ -84,4 +84,6 @@ Architecture decision:
 - Do NOT register an EngineAdapter, expose a Connect action, add a selectable profile, or start a second VPNService/TUN owner.
 - Keep this entry as an active research item only. Reconsider implementation only after an explicit architecture decision resolves the six-engine constraint and a lawful, user-authorized server/domain endpoint is available. Any future prototype must use the existing single-TUN supervisor and pass unit, security, Android instrumentation, and physical-device tests before it can be enabled.
 
-Current status: **Research approved; source audit pending; runtime disabled; no connection tested; not production-ready.**
+Current status: **Preliminary source review complete; critical crypto and secret-storage findings open; complete audit pending; runtime disabled; no connection tested; not production-ready.**
+
+Review report: [docs/research/MASTERDNSVPN_SECURITY_REVIEW.md](../research/MASTERDNSVPN_SECURITY_REVIEW.md). No Molido runtime code or engine catalog was changed.
