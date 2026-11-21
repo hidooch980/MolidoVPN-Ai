@@ -216,7 +216,7 @@ def main() -> int:
             "id": job["id"], "name": job.get("name", "unnamed job"),
             "url": job.get("html_url", ""), "classification": classification,
             "excerpt": redact_secrets(excerpt),
-            "diagnosis": diagnose_log(log if "log" in locals() else excerpt),
+            "diagnosis": diagnose_log(excerpt),
         })
     all_transient = all(r["classification"] == "transient_infrastructure" for r in reports)
     if all_transient and RUN_ATTEMPT < 2:
