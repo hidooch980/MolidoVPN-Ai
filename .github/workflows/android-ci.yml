@@ -140,7 +140,7 @@ jobs:
             --package "system-images;android-35;google_apis;x86_64" \
             --device pixel_2
           test -s "$ANDROID_AVD_HOME/molido-ci-api35.ini"
-          test -d "$ANDROID_AVD_HOME/molido-ci-api35"
+          test -d "$ANDROID_AVD_HOME/molido-ci-api35.avd"
           avdmanager list avd
       - name: Boot emulator with software acceleration
         shell: bash
