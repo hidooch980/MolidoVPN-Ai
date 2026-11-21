@@ -125,13 +125,35 @@ class SessionSupervisorTest {
     }
 
     @Test
+    fun backendManagedStartupReservationCannotBeReleasedWithoutCleanupProof() {
+        val coordinator = TunOwnershipCoordinator()
+        val supervisor = SessionSupervisor(coordinator)
+
+        assertTrue(supervisor.claim(EngineSlot.WIREGUARD))
+        assertTrue(supervisor.markFailed(EngineSlot.WIREGUARD))
+        assertFalse(supervisor.releaseUnstartedReservation(EngineSlot.WIREGUARD))
+        assertEquals(EngineSlot.WIREGUARD, coordinator.snapshot().owner)
+        assertEquals(TunLeaseState.RESERVED, coordinator.snapshot().state)
+        assertFalse(supervisor.claim(EngineSlot.TOR))
+
+        assertTrue(supervisor.releaseUnstartedReservation(
+            EngineSlot.WIREGUARD,
+            backendCleanupConfirmed = true
+        ))
+        assertEquals(TunLeaseState.IDLE, coordinator.snapshot().state)
+    }
+
+    @Test
     fun startupReservationCanBeRolledBackOnlyBeforeTransportActivation() {
         val coordinator = TunOwnershipCoordinator()
         val supervisor = SessionSupervisor(coordinator)
 
         assertTrue(supervisor.claim(EngineSlot.WIREGUARD))
         assertTrue(supervisor.markFailed(EngineSlot.WIREGUARD))
-        assertTrue(supervisor.releaseUnstartedReservation(EngineSlot.WIREGUARD))
+        assertTrue(supervisor.releaseUnstartedReservation(
+            EngineSlot.WIREGUARD,
+            backendCleanupConfirmed = true
+        ))
         assertEquals(TunLeaseState.IDLE, coordinator.snapshot().state)
         assertEquals(SessionState.IDLE, supervisor.snapshot().state)
     }
