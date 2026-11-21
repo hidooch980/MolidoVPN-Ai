@@ -6,6 +6,14 @@ readonly UPSTREAM_TAG="1.0.20260102"
 readonly EXPECTED_TAG_OBJECT="3831cab2da844319291459308a6e535d36dde4b3"
 readonly EXPECTED_COMMIT="09b75c2bd37f749e2a8c85876394854113c74be7"
 readonly WORK_DIR="${RUNNER_TEMP:-/tmp}/molido-wireguard-upstream"
+readonly NDK_VERSION="27.2.12479018"
+readonly ANDROID_API="26"
+readonly SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+
+if [ -z "$SDK_ROOT" ] || [ ! -d "$SDK_ROOT/ndk/$NDK_VERSION" ]; then
+  echo "Pinned Android NDK $NDK_VERSION is not installed."
+  exit 1
+fi
 
 rm -rf "$WORK_DIR"
 git clone --filter=blob:none --no-checkout --no-recurse-submodules "$UPSTREAM_URL" "$WORK_DIR"
@@ -20,82 +28,78 @@ if [ "$actual_tag" != "$EXPECTED_TAG_OBJECT" ] || [ "$actual_commit" != "$EXPECT
 fi
 git -C "$WORK_DIR" checkout --detach "$EXPECTED_COMMIT"
 
-# Build only the userspace Go engine used by Molido's GoBackend adapter.
-# The upstream wireguard-tools (GPL-2) and elf-cleaner (GPL-3.0-or-later)
-# submodules are intentionally not initialized or packaged by this smoke test.
-cat > "$WORK_DIR/tunnel/tools/CMakeLists.txt" <<'CMAKE'
-cmake_minimum_required(VERSION 3.4.1)
-project("WireGuardGoOnly")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
-add_custom_target(libwg-go.so
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/libwg-go"
-    COMMENT "Building pinned wireguard-go userspace library"
-    VERBATIM
-    COMMAND "make"
-        ANDROID_ARCH_NAME=${ANDROID_ARCH_NAME}
-        ANDROID_PACKAGE_NAME=${ANDROID_PACKAGE_NAME}
-        GRADLE_USER_HOME=${GRADLE_USER_HOME}
-        CC=${CMAKE_C_COMPILER}
-        CFLAGS=${CMAKE_C_FLAGS}
-        LDFLAGS=${CMAKE_SHARED_LINKER_FLAGS}
-        SYSROOT=${CMAKE_SYSROOT}
-        TARGET=${CMAKE_C_COMPILER_TARGET}
-        DESTDIR=${CMAKE_LIBRARY_OUTPUT_DIRECTORY}
-        BUILDDIR=${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/../generated-src
-)
-CMAKE
+# Build the exact upstream Go userspace library directly with its own Makefile.
+# This deliberately avoids configuring the upstream Android app/UI Gradle build.
+# The GPL wireguard-tools and elf-cleaner submodules are not initialized or built.
+readonly NDK_ROOT="$SDK_ROOT/ndk/$NDK_VERSION"
+readonly TOOLCHAIN="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
+readonly SYSROOT="$TOOLCHAIN/sysroot"
+readonly GRADLE_USER_HOME="${RUNNER_TEMP:-/tmp}/molido-gradle-cache"
+readonly OUT="$WORK_DIR/native-output"
+mkdir -p "$GRADLE_USER_HOME" "$OUT"
 
-python3 - "$WORK_DIR/tunnel/build.gradle.kts" <<'PY'
-from pathlib import Path
-import sys
+build_abi() {
+  local abi="$1"
+  local arch="$2"
+  local target="$3"
+  local dest="$OUT/$abi"
+  local build="$WORK_DIR/build/$abi"
+  mkdir -p "$dest" "$build"
 
-path = Path(sys.argv[1])
-text = path.read_text()
-old = 'targets("libwg-go.so", "libwg.so", "libwg-quick.so")'
-new = 'targets("libwg-go.so")'
-if text.count(old) != 1:
-    raise SystemExit("Expected exactly one upstream native target declaration")
-path.write_text(text.replace(old, new))
-PY
+  echo "Building pinned wireguard-go for $abi ($target)"
+  make -C "$WORK_DIR/tunnel/tools/libwg-go" \
+    ANDROID_ARCH_NAME="$arch" \
+    ANDROID_PACKAGE_NAME="com.wireguard.android" \
+    GRADLE_USER_HOME="$GRADLE_USER_HOME" \
+    CC="$TOOLCHAIN/bin/$target-clang" \
+    CFLAGS="-O2 -fPIC" \
+    LDFLAGS="-Wl,--build-id=none" \
+    SYSROOT="$SYSROOT" \
+    TARGET="$target" \
+    DESTDIR="$dest" \
+    BUILDDIR="$build"
 
-cd "$WORK_DIR"
-build_log="$WORK_DIR/molido-go-only-build.log"
-build_succeeded=0
-for attempt in 1 2 3; do
-  echo "WireGuard source build attempt $attempt/3"
-  if ./gradlew --no-daemon :tunnel:assembleRelease 2>&1 | tee "$build_log"; then
-    build_succeeded=1
-    break
-  else
-    build_status=$?
-  fi
-
-  # Retry only transient dependency/repository transport failures. Never retry
-  # compilation, CMake, source, assertion, or packaging failures.
-  if grep -Eqi 'HTTP 429|status code: 429|Received status code 429|HTTP 5[0-9][0-9]|status code: 5[0-9][0-9]|Temporary failure in name resolution|Connection reset|Read timed out|Connection timed out' "$build_log"; then
-    if [ "$attempt" -lt 3 ]; then
-      delay=$((attempt * 20))
-      echo "Transient repository/network failure detected; retrying after ${delay}s."
-      sleep "$delay"
-      continue
-    fi
-  fi
-  exit "$build_status"
-done
-if [ "$build_succeeded" -ne 1 ]; then
-  echo "WireGuard Go-only source build did not succeed after bounded retries."
-  exit 1
-fi
-
-aar="$WORK_DIR/tunnel/build/outputs/aar/tunnel-release.aar"
-test -s "$aar"
-entries="$(unzip -Z1 "$aar")"
-printf '%s\n' "$entries" | grep -Eq '^jni/[^/]+/libwg-go\.so$' || {
-  echo "The built AAR does not contain the expected libwg-go.so native library."
-  exit 1
+  test -s "$dest/libwg-go.so"
+  "$TOOLCHAIN/bin/llvm-readelf" -h "$dest/libwg-go.so" > "$dest/elf-header.txt"
 }
-if printf '%s\n' "$entries" | grep -Eq '^jni/[^/]+/libwg(-quick)?\.so$'; then
-  echo "The Go-only AAR unexpectedly contains GPL command-line native libraries."
+
+build_abi "arm64-v8a" "arm64" "aarch64-linux-android$ANDROID_API"
+build_abi "armeabi-v7a" "arm" "armv7a-linux-androideabi$ANDROID_API"
+build_abi "x86" "x86" "i686-linux-android$ANDROID_API"
+build_abi "x86_64" "x86_64" "x86_64-linux-android$ANDROID_API"
+
+check_machine() {
+  local abi="$1"
+  local expected="$2"
+  if ! grep -Fq "Machine:                           $expected" "$OUT/$abi/elf-header.txt"; then
+    echo "Unexpected ELF machine for $abi"
+    cat "$OUT/$abi/elf-header.txt"
+    exit 1
+  fi
+}
+check_machine "arm64-v8a" "AArch64"
+check_machine "armeabi-v7a" "ARM"
+check_machine "x86" "Intel 80386"
+check_machine "x86_64" "Advanced Micro Devices X86-64"
+
+mkdir -p "$OUT/package/jni"
+for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+  mkdir -p "$OUT/package/jni/$abi"
+  cp "$OUT/$abi/libwg-go.so" "$OUT/package/jni/$abi/"
+done
+(
+  cd "$OUT/package"
+  zip -qr "$WORK_DIR/wireguard-go-only-native.zip" jni
+)
+entries="$(unzip -Z1 "$WORK_DIR/wireguard-go-only-native.zip")"
+for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+  printf '%s\n' "$entries" | grep -Fxq "jni/$abi/libwg-go.so"
+done
+if printf '%s\n' "$entries" | grep -Eq 'libwg(-quick)?\.so$'; then
+  echo "The Go-only native package unexpectedly contains GPL command-line libraries."
   exit 1
 fi
-echo "PASS: pinned upstream tunnel module builds and packages libwg-go.so only."
+
+echo "PASS: pinned upstream wireguard-go built for all four Android ABIs."
+echo "PASS: ELF machine headers match the requested Android ABIs."
+echo "PASS: native package contains only libwg-go.so; no wireguard-tools binaries."
