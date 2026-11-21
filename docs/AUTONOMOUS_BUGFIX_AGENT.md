@@ -11,7 +11,7 @@ The agent is wired into the Android CI pipeline. It inspects failed jobs, downlo
 3. Match known Android, Gradle, Emulator, WireGuard native-build, and signing failures to a conservative diagnosis, exact log evidence, and a bounded remediation recommendation. Unknown errors remain explicitly unclassified.
 4. Retry failed jobs exactly once only when every failed job is positively classified as transient infrastructure and the run is on its first attempt.
 5. For code/test, unknown, mixed, or repeat failures, create or reuse one GitHub issue per run. The issue includes the commit, workflow/run links, job links, classification, and bounded log excerpts.
-6. Run seventeen unit tests for classification, secret redaction, and root-cause diagnosis on every CI execution.
+6. Run twenty unit tests for classification, secret redaction, and root-cause diagnosis on every CI execution.
 
 ## Safety boundaries
 
@@ -31,7 +31,7 @@ The safe first increment therefore automates diagnosis, a single bounded retry f
 
 ## Verification
 
-- Unit tests: `python -m unittest scripts/automation/test_bugfix_agent.py -v` (17 cases)
+- Unit tests: `python -m unittest scripts/automation/test_bugfix_agent.py -v` (20 cases)
 - Workflow: `.github/workflows/android-ci.yml`
 - Implementation: `scripts/automation/bugfix_agent.py`
 - Regression tests: `scripts/automation/test_bugfix_agent.py`
