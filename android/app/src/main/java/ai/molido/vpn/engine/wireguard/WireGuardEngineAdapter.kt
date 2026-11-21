@@ -68,6 +68,13 @@ class WireGuardEngineAdapter(
             Config.parse(ByteArrayInputStream(encoded)).also {
                 require(it.peers.isNotEmpty()) { "WireGuard configuration must contain at least one peer" }
             }
+        } catch (failure: Throwable) {
+            throw EngineStartException(
+                message = "WireGuard configuration rejected before backend startup",
+                cleanupSession = null,
+                cause = failure,
+                cleanupConfirmed = true
+            )
         } finally {
             encoded.fill(0)
         }
@@ -147,7 +154,12 @@ class WireGuardEngineAdapter(
                 wrapped.addSuppressed(cleanupFailure)
                 throw wrapped
             }
-            throw failure
+            throw EngineStartException(
+                message = "WireGuard startup failed; backend cleanup was confirmed",
+                cleanupSession = null,
+                cause = failure,
+                cleanupConfirmed = true
+            )
         }
 
         session
