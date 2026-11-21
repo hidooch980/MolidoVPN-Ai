@@ -4,12 +4,12 @@ Status: REQUIRED BEFORE ADDING A SECOND ENGINE
 Decision scope: Android VPN lifecycle and exclusive TUN descriptor ownership in MolidoVPN AI.
 
 ## 1. Verified implementation baseline
-- `VpnSessionController` currently owns a `SessionSupervisor` reservation and separately tracks `activeSession` / `activeOwner`.
-- `WireGuardEngineAdapter` independently acquires a `TunOwnershipCoordinator` lease using `BACKEND_MANAGED` and starts/stops upstream `GoBackend`.
-- `MolidoVpnApplication` creates one `TunOwnershipCoordinator`, passes it to WireGuard, and separately creates `SessionSupervisor` for `VpnSessionController`.
+- `VpnSessionController` serializes session commands through `SessionSupervisor` and separately retains the active `EngineSession` / owner handle for cleanup retries.
+- `MolidoVpnApplication` creates one `TunOwnershipCoordinator` and passes that same instance to both `SessionSupervisor` and `WireGuardEngineAdapter`.
+- `SessionSupervisor.claim()` reserves the `BACKEND_MANAGED` lease before adapter startup and supplies the exact generation-scoped token through `tunLeaseFor()`; `WireGuardEngineAdapter` validates that token and reports backend UP/DOWN confirmation. The adapter does **not** independently acquire a second lease.
+- The session state machine and TUN lease state machine remain separate ledgers, coordinated synchronously by the controller/supervisor and guarded by the coordinator's generation token. This is stronger than an unshared reservation, but it is not yet one Android service-owned authority and does not create or broker a TUN descriptor.
 - The manifest currently relies on the WireGuard AAR merged `GoBackend.VpnService` as the VPN service/TUN provider.
 - The private Xray, AmneziaWG, and Psiphon services are process/IPC scaffolding only; they are not `VpnService` implementations and do not own or receive a TUN descriptor.
-- Therefore the session reservation and TUN lease are distinct state machines. Their current coordination is by call ordering, not one atomic ownership authority.
 
 ## 2. Required invariant
 At any instant, at most one engine may own the Android VPN session and the TUN data path. A replacement engine must not start until the previous engine has stopped, all duplicated descriptor copies are closed or the backend has positively confirmed DOWN, and the central owner has released the exact generation-scoped lease.
