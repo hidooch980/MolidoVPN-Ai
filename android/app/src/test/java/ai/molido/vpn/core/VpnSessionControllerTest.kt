@@ -158,6 +158,63 @@ class VpnSessionControllerTest {
     }
 
     @Test
+    fun sharedTunLeaseIsRetainedWhenStartupFailureHasNoCleanupProof() {
+        val coordinator = TunOwnershipCoordinator()
+        val supervisor = SessionSupervisor(coordinator)
+        val adapter = object : TunLeaseAwareEngineAdapter {
+            override val slot = EngineSlot.WIREGUARD
+            override fun start(configuration: String, lease: TunLeaseToken): EngineSession {
+                error("backend startup outcome is uncertain")
+            }
+        }
+        val competing = object : TunLeaseAwareEngineAdapter {
+            override val slot = EngineSlot.TOR
+            override fun start(configuration: String, lease: TunLeaseToken): EngineSession =
+                error("competing engine must not start")
+        }
+        val controller = VpnSessionController(supervisor, listOf(adapter, competing))
+
+        try {
+            controller.connect(EngineSlot.WIREGUARD, "profile")
+            fail("Expected uncertain startup failure")
+        } catch (_: IllegalStateException) {
+            // The controller must retain the lease without positive cleanup proof.
+        }
+        assertEquals(SessionState.FAILED, controller.snapshot().state)
+        assertEquals(EngineSlot.WIREGUARD, supervisor.currentOwner())
+        assertEquals(EngineSlot.WIREGUARD, coordinator.snapshot().owner)
+        assertEquals(TunLeaseState.RESERVED, coordinator.snapshot().state)
+        assertFalse(controller.connect(EngineSlot.TOR, "must-not-overlap"))
+    }
+
+    @Test
+    fun explicitStartupCleanupProofAllowsReservationRollback() {
+        val coordinator = TunOwnershipCoordinator()
+        val supervisor = SessionSupervisor(coordinator)
+        val adapter = object : TunLeaseAwareEngineAdapter {
+            override val slot = EngineSlot.WIREGUARD
+            override fun start(configuration: String, lease: TunLeaseToken): EngineSession =
+                throw EngineStartException(
+                    "invalid profile before backend startup",
+                    cleanupSession = null,
+                    cause = IllegalArgumentException("invalid profile"),
+                    cleanupConfirmed = true
+                )
+        }
+        val controller = VpnSessionController(supervisor, listOf(adapter))
+
+        try {
+            controller.connect(EngineSlot.WIREGUARD, "invalid-profile")
+            fail("Expected startup validation failure")
+        } catch (_: EngineStartException) {
+            // Adapter positively confirmed that no backend resources were started.
+        }
+        assertEquals(SessionState.IDLE, controller.snapshot().state)
+        assertEquals(TunLeaseState.IDLE, coordinator.snapshot().state)
+        assertNull(supervisor.currentOwner())
+    }
+
+    @Test
     fun startupFailureWithPendingCleanupRetainsOwnerForRetry() {
         val supervisor = SessionSupervisor()
         val cleanupSession = FakeSession(failuresRemaining = 1)
