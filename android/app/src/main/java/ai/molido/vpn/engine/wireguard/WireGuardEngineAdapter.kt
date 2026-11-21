@@ -4,7 +4,7 @@ import android.content.Context
 import com.wireguard.android.backend.GoBackend
 import com.wireguard.android.backend.Tunnel
 import com.wireguard.config.Config
-import ai.molido.vpn.core.EngineAdapter
+import ai.molido.vpn.core.TunLeaseAwareEngineAdapter
 import ai.molido.vpn.core.EngineSession
 import ai.molido.vpn.core.EngineSlot
 import ai.molido.vpn.core.EngineStartException
@@ -29,7 +29,7 @@ data class WireGuardRuntimeStatistics(
 class WireGuardEngineAdapter(
     context: Context,
     private val tunOwnership: TunOwnershipCoordinator
-) : EngineAdapter, EngineFailureAwareAdapter {
+) : TunLeaseAwareEngineAdapter, EngineFailureAwareAdapter {
     override val slot: EngineSlot = EngineSlot.WIREGUARD
 
     private val lock = Any()
@@ -58,7 +58,7 @@ class WireGuardEngineAdapter(
         )
     }
 
-    override fun start(configuration: String): EngineSession = synchronized(lock) {
+    override fun start(configuration: String, lease: TunLeaseToken): EngineSession = synchronized(lock) {
         check(activeTunnel == null && activeLease == null) { "WireGuard session is already active" }
         require(configuration.isNotBlank()) { "WireGuard configuration is empty" }
         val encoded = configuration.toByteArray(StandardCharsets.UTF_8)
@@ -72,8 +72,9 @@ class WireGuardEngineAdapter(
             encoded.fill(0)
         }
 
-        val lease = tunOwnership.acquireBackendManaged(slot)
-            ?: throw IllegalStateException("Another engine already owns the VPN TUN lease")
+        check(lease.engine == slot && lease.transport == ai.molido.vpn.core.TunLeaseTransport.BACKEND_MANAGED &&
+            tunOwnership.isReserved(lease)
+        ) { "WireGuard received an invalid or stale shared TUN lease" }
 
         val startupComplete = AtomicBoolean(false)
         val intentionalStop = AtomicBoolean(false)
