@@ -32,3 +32,16 @@ interface EngineFailureAwareAdapter {
     /** Listener must report unexpected engine failure only; intentional stop transitions are excluded. */
     fun setFailureListener(listener: (() -> Unit)?)
 }
+
+
+/**
+ * Adapter contract for engines whose lifecycle is authorized by the application's
+ * shared TUN lease. The controller supplies the exact lease reserved by SessionSupervisor;
+ * adapters must never acquire a second independent lease.
+ */
+interface TunLeaseAwareEngineAdapter : EngineAdapter {
+    fun start(configuration: String, lease: TunLeaseToken): EngineSession
+
+    override fun start(configuration: String): EngineSession =
+        throw IllegalStateException("This engine must be started through the shared TUN lease supervisor")
+}
