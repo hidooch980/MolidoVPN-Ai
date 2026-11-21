@@ -1,8 +1,8 @@
 # Autonomous Bug-Fix Agent
 
 ## Current verified capabilities
-- Classifies CI failures, diagnoses known categories, redacts common secrets, retries only first-attempt all-transient failures once, and creates/reuses evidence-backed GitHub issues. Log ZIP extraction and the network response read are bounded by archive size, member count, per-member and total expanded sizes, and compression ratio. Signed AWS, Google Cloud, and Azure URL query credentials are redacted from issue evidence. Environment-style and quoted JSON secret assignments, including Android signing and AWS temporary credentials, are redacted. Redirects drop GitHub authorization on cross-host/port changes and HTTPS downgrades.
-- Latest completed evidence before the expanded regression suite: the bug-fix agent classification tests, Android unit tests/lint/assemble, and pinned WireGuard Go-only source build passed. Emulator Keystore instrumentation for run #280 was still running at the last status check; no final green-run claim is made.
+- Classifies CI failures, diagnoses known categories, redacts common secrets, retries only first-attempt all-transient failures once, and creates/reuses evidence-backed GitHub issues. GitHub API response reads and HTTP error bodies are bounded; HTTP error summaries are redacted. Log ZIP extraction and log-download response reads are bounded by archive size, member count, per-member and total expanded sizes, and compression ratio. Signed AWS, Google Cloud, and Azure URL query credentials are redacted from issue evidence. Environment-style and quoted JSON secret assignments, including Android signing and AWS temporary credentials, are redacted. Redirects drop GitHub authorization on cross-host/port changes and HTTPS downgrades.
+- Latest completed evidence before the newest API-response hardening: CI run #291 on commit `dc0ea967` passed 40 bug-fix/patch-policy tests, 13 backend tests, 16 Android Keystore emulator instrumentation tests, Android unit tests/lint/release assembly, and the pinned WireGuard Go-only source build. Signed-release and the autonomous bug-fix job were skipped for this pull-request run. The new API-response regression tests require a fresh CI run.
 
 ## Patch-policy guardrail (proposal validation only)
 - `scripts/automation/patch_policy.py` validates patch-plan metadata and unified-diff headers/paths/actual added-deleted line counts; it does not edit files, execute commands, or create pull requests.
@@ -16,6 +16,6 @@
 - Unknown, mixed, compilation, assertion, instrumentation, and security failures are not automatically retried as transient infrastructure.
 
 ## Verification
-- Bug-fix agent and patch-policy tests: `python -m unittest scripts/automation/test_bugfix_agent.py -v` (40 tests are now defined; the two newest regression tests cover pre-extraction network read limits and signed cloud-URL secret redaction. Their CI run must complete successfully before this expanded suite is marked green).
+- Bug-fix agent and patch-policy tests: `python -m unittest scripts/automation/test_bugfix_agent.py -v` (42 tests are now defined; the newest regression tests cover pre-extraction network read limits, signed cloud-URL secret redaction, bounded GitHub API reads, and redacted HTTP error summaries. The newest two tests require a fresh CI run).
 - Patch policy tests are included in the same test module.
 - Workflow: `.github/workflows/android-ci.yml`
