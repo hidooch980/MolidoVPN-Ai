@@ -1,0 +1,52 @@
+import importlib.util
+import os
+import unittest
+
+os.environ.setdefault("GITHUB_REPOSITORY", "owner/repo")
+os.environ.setdefault("GITHUB_TOKEN", "test-token")
+os.environ.setdefault("BUGFIX_RUN_ID", "1")
+
+SPEC = importlib.util.spec_from_file_location(
+    "bugfix_agent", "scripts/automation/bugfix_agent.py"
+)
+agent = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(agent)
+
+
+class BugFixAgentClassificationTests(unittest.TestCase):
+    def test_maven_rate_limit_is_transient(self):
+        self.assertEqual(
+            agent.classify_log("Could not GET artifact: HTTP 429 Too Many Requests"),
+            "transient_infrastructure",
+        )
+
+    def test_dns_and_timeout_are_transient(self):
+        self.assertEqual(
+            agent.classify_log("Temporary failure in name resolution"),
+            "transient_infrastructure",
+        )
+
+    def test_assertion_failure_is_not_retried(self):
+        self.assertEqual(
+            agent.classify_log("java.lang.AssertionError: expected true"),
+            "code_or_test_failure",
+        )
+
+    def test_compilation_failure_is_not_retried(self):
+        self.assertEqual(
+            agent.classify_log("e: file: MainActivity.kt: Unresolved reference"),
+            "code_or_test_failure",
+        )
+
+    def test_unknown_failure_fails_closed(self):
+        self.assertEqual(agent.classify_log("Process exited with code 1"), "unknown")
+
+    def test_code_failure_takes_precedence_over_network_noise(self):
+        self.assertEqual(
+            agent.classify_log("HTTP 429\nAssertionError: bad result"),
+            "code_or_test_failure",
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
