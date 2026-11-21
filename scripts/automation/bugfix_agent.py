@@ -137,7 +137,7 @@ def redact_secrets(text: str) -> str:
     text = re.sub(
         r"(?i)\b([A-Z0-9_.-]*(?:password|passwd|token|secret|api[_-]?key|private[_-]?key|"
         r"signing[_-]?key|keystore[_-]?(?:password|base64)|aws[_-]?(?:secret[_-]?access[_-]?key|session[_-]?token))[A-Z0-9_.-]*)"
-        r"(\s*[:=]\s*)(?:\"[^\"]*\"|'[^']*'|[^\s,;]+)",
+        r"[\"']?(\s*[:=]\s*)(?:\"[^\"]*\"|'[^']*'|[^\s,;]+)",
         r"\1\2[REDACTED]", text,
     )
     text = re.sub(r"(?i)(https?://[^:/\s]+:)[^@/\s]+@", r"\1[REDACTED]@", text)
