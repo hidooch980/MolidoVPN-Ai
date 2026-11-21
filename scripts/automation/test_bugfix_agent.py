@@ -233,6 +233,31 @@ class BugFixAgentClassificationTests(unittest.TestCase):
             redirected.get_header("Authorization"), "Bearer sensitive-token"
         )
 
+    def test_api_uses_safe_redirect_handler(self):
+        from unittest.mock import patch
+        captured = {}
+        class FakeResponse:
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self, size=-1): return b'{"ok":true}'
+        class FakeOpener:
+            def open(self, request, timeout):
+                captured["request"] = request
+                captured["timeout"] = timeout
+                return FakeResponse()
+        def fake_build_opener(*handlers):
+            captured["handlers"] = handlers
+            return FakeOpener()
+        with patch.object(agent.urllib.request, "build_opener", side_effect=fake_build_opener):
+            result = agent.api("GET", "/repos/owner/repo")
+        self.assertEqual(result, {"ok": True})
+        self.assertTrue(any(isinstance(h, agent.SafeRedirectHandler) for h in captured["handlers"]))
+        self.assertEqual(captured["timeout"], 45)
+
+    def test_generic_exception_detail_is_redacted(self):
+        detail = agent.redact_secrets("token=top-secret")
+        self.assertNotIn("top-secret", detail)
+
     def test_https_downgrade_redirect_drops_authorization(self):
         request = Request("https://api.github.com/logs")
         request.add_header("Authorization", "Bearer sensitive-token")
