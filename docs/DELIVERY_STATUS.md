@@ -1,71 +1,90 @@
 # Delivery Status
 
-Branch: development/molido-vpn-ai-from-scratch
+Branch under active review: `feature/wireguard-runtime-diagnostics`
+Base: `development/molido-vpn-ai-from-scratch`
+Current reviewed commit: `4019b4f2666d1b870bb9b397f3dc18be030cf333`
 
 ## Release decision
 
-**Stable Production: BLOCKED.** Repository work cannot substitute for an authorized VPN endpoint, hands-on Android device validation, owner-approved permanent signing identity, or operator-approved server deployment. No APK is distributed.
+**Stable Production: BLOCKED.** CI is now green on the current PR head, but this is not proof of real VPN data-plane operation. The central app-owned TUN service, descriptor handoff, custom WireGuard backend, physical-device acceptance, production signing verification, and external engine gates remain incomplete. No Stable APK is approved or distributed.
 
-## Latest CI evidence
+## Latest CI evidence — run #220
 
-[Android CI #122](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44576617166), commit `86bc0c62d655fab4a3d34a1cad62ba7ddd37755e`, completed successfully:
-- Self-hosted control-plane backend tests: success
-- Android unit tests: success
-- Android lint: success
-- Release variant assembly (CI validation only): success
+[Android CI #220](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44940225549), commit `4019b4f2666d1b870bb9b397f3dc18be030cf333`, completed successfully:
 
-This is **CI Tested**, not Android Device Tested or Production Verified. No APK was distributed.
+- Android source validation: success (unit tests, lint, release-variant assembly).
+- Backend tests: **13 passed**.
+- Android Keystore instrumentation: **15 tests started, 15 finished, BUILD SUCCESSFUL** on API 35 x86_64 emulator with KVM.
+- Signed-release job: **skipped**, as expected for a pull-request event.
+
+This run resolves the earlier CI infrastructure failure caused by missing KVM access and demonstrates that the instrumentation suite executed. It does not resolve the central TUN ownership architecture or establish real-device connectivity. Earlier run #217's 0/0 instrumentation process crash remains historical evidence; run #220 passed the current instrumentation suite.
+
+Non-blocking warnings observed in CI:
+- Deprecated Android system UI APIs in `MainActivity.kt`.
+- Unchecked `SpinnerAdapter` to `ArrayAdapter<String>` cast.
+- Native WireGuard libraries could not be stripped and were packaged unchanged.
+- GitHub Actions warns that several configured actions target Node.js 20 while the runner is transitioning to Node.js 24.
 
 ## Product decisions
 
-- No human end-user accounts, registration, login, or password-reset flows. See [ADR: No End-User Accounts](ARCHITECTURE_DECISIONS.md).
-- Machine/device authentication remains separate and optional to a deployed control plane. Admin secrets never belong in the APK.
-- Dashboard is local-first and uses actual Android/session observations. Unknown values remain unknown; no invented public IP, country, ping, speed, handshake, or server state.
+- No human end-user accounts, registration, login, or password-reset flows.
+- Machine/device authentication remains separate; admin secrets never belong in the APK.
+- Local-first dashboard; unknown values remain unknown. No fabricated public IP, country, ping, speed, handshake, server or provider state.
+- Exactly six engine slots and eight complementary cores; no seventh engine or ninth core.
+- GitHub Actions is CI, not a permanent VPN server, relay, or backend runtime.
+- No paid infrastructure or external service without explicit owner approval.
 
-## Android dashboard
+## Eight-core status
 
-The native dashboard now uses a dark layered/glass visual system with teal accent surfaces, raised controls, live session-state observation, network assessment, profile import, network-policy controls, and all six engine slots. Only WireGuard is selectable because it is the only implemented adapter. The other five are explicitly marked Not Implemented. This source UI has passed CI compilation/lint/unit checks; visual behavior and touch layout still require a physical Android device review.
-
-## Verified source implementation
-
-| Area | Status | Boundary |
+| Core | Current status | Remaining acceptance |
 |---|---|---|
-| Six-engine / eight-core architecture | Source Implemented | Inventory guarded by unit tests; inventory does not imply engine implementation |
-| Session & TUN Supervisor | Source Implemented | Exclusive owner, lifecycle state machine, cleanup retry |
-| WireGuard | Source Implemented | Upstream Android GoBackend adapter; no device/server data-plane proof |
-| Network Intelligence | Source Implemented | Passive default-network observation; stale/lost-network handling; UI reports OS-observed facts only |
-| Adaptive Path & Policy | Partially Source Implemented | Fresh Android-observed connectivity gates start; local ANY_VALIDATED/UNMETERED_ONLY/WIFI_ONLY policy |
-| Security & Privacy | Partially Source Implemented | In-memory profile flow, redaction, HTTPS-only client, Android Keystore-protected trust material; full threat-model validation pending |
-| Resilience & Recovery | Partially Source Implemented | Bounded recovery planner and explicit cleanup action; no automatic scheduler or process-death recovery |
-| Diagnostics & Observability | Partially Source Implemented | Bounded, disabled-by-default, process-local ring buffer; no telemetry or persistent logs |
-| Control Plane & Configuration | Partially Source Implemented; Server Deployment Required | FastAPI/SQLite device enrollment/revocation and ECDSA-signed config source; server not deployed |
-| Update & Integrity | Partially Source Implemented | Signed manifest/hash verification and PackageInstaller staging; download transport and physical install/rollback validation pending |
+| Session & TUN Supervisor | Source Implemented; CI Tested | Replace split session/lease coordination with one authoritative service-owned TUN lifecycle; real descriptor handoff and cleanup acknowledgement |
+| Network Intelligence | Source Implemented | Physical Android callback, stale/lost network, Wi-Fi/mobile transition and route behavior |
+| Adaptive Path & Policy | Partially Source Implemented | Validated measured path selection; no real Smart/automatic optimization evidence |
+| Security & Privacy | Partially Source Implemented | Full threat-model review, secret lifecycle, IPC authentication, dependency/SBOM/license and leak validation |
+| Resilience & Recovery | Partially Source Implemented | Process-death/Binder-death recovery, safe retry scheduler, crash and network-switch tests |
+| Diagnostics & Observability | Partially Source Implemented | Device evidence, redaction review, actionable diagnostics; telemetry remains disabled by default |
+| Control Plane & Configuration | Partially Source Implemented; Server Deployment Required | Deployment source, operational backup/restore, authentication/key operations and real integration; no live server is asserted |
+| Update & Integrity | Partially Source Implemented | Download transport, signed manifest/key lifecycle, physical PackageInstaller install/rollback and downgrade/replay tests |
 
 ## Six-engine matrix
 
-| Engine slot | Status |
-|---|---|
-| WireGuard | Source Implemented; physical data-plane validation pending |
-| AmneziaWG | Not Implemented |
-| V2Ray/Xray | Not Implemented |
-| Psiphon | Not Implemented |
-| Tor | Not Implemented |
-| MASQUE/WARP-compatible | Not Implemented |
+| Engine | Current status | Remaining gate |
+|---|---|---|
+| WireGuard | Source Implemented; CI Tested | Migrate from AAR-owned GoBackend.VpnService to reviewed source backend accepting central TUN FD; then device/data-plane validation |
+| AmneziaWG | Not Implemented | Official source pin, recursive submodules, reproducible native build, adapter and shared TUN tests |
+| V2Ray/Xray | Not Implemented | Pinned official libXray/API v3, isolated Go runtime adapter, IPC/FD lifecycle and traffic tests |
+| Psiphon | Blocked | GPL-3.0-compliant distribution decision or written commercial permission, then official library integration |
+| Tor | Not Implemented | Official daemon, SOCKS lifecycle, audited TUN-to-SOCKS bridge, DNS/UDP limitations and device tests |
+| MASQUE/WARP-compatible | Blocked | Supported public Android embedding/API and terms must be established; no private endpoint reverse engineering |
 
-No seventh engine is allowed. Remaining engines require individual license, dependency, native-code, privacy, routing and single-TUN compatibility reviews.
+Only WireGuard is registered in the runtime capability catalog. A registered source adapter is not a verified working VPN. No provider-supplied country inventory is available, so country selection remains unavailable.
 
-## Recovery and network boundaries
+## TUN ownership — critical blocker
 
-- Recovery remains user/caller initiated: cleanup of a retained FAILED session is offered from the dashboard. A returned retry plan is advisory; there is no automatic reconnect scheduler.
-- Profiles remain in memory only. Process-death recovery is not implemented and must not be approximated by storing secrets in WorkManager data.
-- Network metrics are Android-reported link capability estimates, not measured VPN throughput. Public IP, country, ping and peer handshake are not shown without authoritative measurements.
-- Physical testing is still required for permission flow, handshake, bidirectional traffic, DNS, IPv4/IPv6 routes, leak behavior, network transitions, recovery and process death.
+The app manifest still receives `GoBackend.VpnService` from `com.wireguard.android:tunnel:1.0.20260102`. The app does not yet declare its own central `MolidoVpnService`. The current `TunOwnershipCoordinator` is an in-process lease/state coordinator, not an Android VPN service or FD broker. `NativeEngineProcessService` is status-only process-isolation scaffolding: it does not receive an FD, start a native engine, or acknowledge descriptor closure.
 
-## Security and operational limitations
+The session supervisor and TUN coordinator are still separate state machines. Do not add a second VPN service or use reflection/private JNI hooks. Follow the reviewed migration decision: pin and verify official WireGuard source provenance/signature/submodules, build a narrow Apache-2.0-compliant local backend that accepts a central-service FD, then migrate manifest ownership and add authenticated versioned Binder/ParcelFileDescriptor IPC.
 
-- Android trust keys are pinned once and encrypted at rest using Android Keystore AES-GCM. Initial pinning must occur through a trusted owner-controlled channel; there is no trust-on-first-use.
-- Backend requires operator-provisioned admin token and ECDSA private key outside the repository. No production server is running.
-- Diagnostics are disabled by default, process-local and not uploaded.
-- Five engines are not implemented.
-- No permanent signing key was generated or changed.
-- Stable Production remains blocked until device tests, approved endpoint, approved signing identity, server deployment (if used), update transport and security gates pass.
+## Physical device and network acceptance
+
+Not yet verified:
+- Install/permission/foreground-service behavior on a physical Android phone.
+- Authorized WireGuard endpoint handshake and bidirectional traffic.
+- IPv4/IPv6 routes, DNS correctness, DNS/IP leaks and fail-closed behavior.
+- Wi-Fi/mobile handover, captive portal, airplane mode, network loss and recovery.
+- Repeated connect/disconnect, process death, cleanup and descriptor leak behavior.
+- Battery, thermal, memory and long-duration stability.
+
+No VPN server/VPS is assumed or requested as a current development dependency. Real endpoint acceptance is a later external prerequisite and must use an endpoint the owner is authorized to access.
+
+## Signing and release
+
+- PR CI release assembly is unsigned/CI validation only; signed-release job is skipped on pull requests.
+- Permanent owner-controlled signing identity and matching APK certificate fingerprint have not been verified by a successful signed-release workflow on the approved base branch.
+- No APK from CI #220 is a Stable Production deliverable.
+- Do not rotate or replace an established signing identity without explicit authorization and backup.
+
+## Current PR state
+
+PR #4 remains **Draft / open / unmerged**. Keep it Draft until the central TUN migration, engine/legal gates, physical-device acceptance, signed artifact verification and all release checks pass.
