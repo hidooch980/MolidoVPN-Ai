@@ -92,6 +92,79 @@ def classify_log(log: str) -> str:
         return "transient_infrastructure"
     return "unknown"
 
+DIAGNOSTIC_RULES = [
+    ("signing_or_keystore", re.compile(
+        r"keystore|signing config|signer #1 certificate|certificate.*mismatch|"
+        r"ANDROID_KEYSTORE|key alias|failed to load.*key",
+        re.IGNORECASE),
+     "Signing or keystore configuration failure",
+     "Do not rotate or replace signing keys. Verify secret names, alias, keystore format, and certificate fingerprint against the approved release identity."),
+    ("wireguard_native_build", re.compile(
+        r"libwg-go|wireguard-go|NDK|CMake|jni\.c|GOARCH|gomobile|"
+        r"native.*(build|link)|undefined reference",
+        re.IGNORECASE),
+     "WireGuard native toolchain or source-build failure",
+     "Keep the upstream commit pin unchanged. Inspect the first compiler/linker error, ABI target, NDK/CMake version, and produced AAR contents before changing build logic."),
+    ("emulator_boot_or_kvm", re.compile(
+        r"/dev/kvm|emulator.*(boot|launch|exit)|sys\.boot_completed|"
+        r"PackageManager never|adb wait-for-device|hardware acceleration",
+        re.IGNORECASE),
+     "Android Emulator or virtualization startup failure",
+     "Inspect runner KVM availability, AVD image, emulator process log, ADB readiness, and PackageManager readiness; do not classify this as an application regression without device evidence."),
+    ("android_instrumentation", re.compile(
+        r"INSTRUMENTATION_FAILED|INSTRUMENTATION_RESULT|"
+        r"instrumentation.*(failed|crash)|FATAL EXCEPTION|"
+        r"Process .* has died|Test failed",
+        re.IGNORECASE),
+     "Android instrumentation or runtime test failure",
+     "Inspect the failing test name and filtered logcat stack trace. Reproduce on the same API level and add a regression test before changing runtime code."),
+    ("kotlin_or_java_compile", re.compile(
+        r"Unresolved reference|Compilation error|Compilation failed|"
+        r"e: file:.*\.(kt|java):|cannot find symbol|type mismatch",
+        re.IGNORECASE),
+     "Kotlin or Java compilation failure",
+     "Use the first compiler diagnostic and exact file/line. Make the smallest source-compatible change and rerun unit tests, lint, and Android assembly."),
+    ("unit_test_assertion", re.compile(
+        r"AssertionError|AssertionFailedError|"
+        r"expected:.*but was:|Tests? failed|FAILED\s+\(",
+        re.IGNORECASE),
+     "Unit or regression test failure",
+     "Treat this as a real regression until proven otherwise. Inspect assertion context and recent behavior changes; do not retry as an infrastructure failure."),
+    ("gradle_dependency_resolution", re.compile(
+        r"Could not (find|GET|HEAD)|Could not resolve|"
+        r"Temporary failure|UnknownHostException|"
+        r"Connection reset|Read timed out|HTTP\s*429|"
+        r"status code[: ]+5\d\d",
+        re.IGNORECASE),
+     "Gradle dependency or repository transport failure",
+     "Check repository reachability and dependency coordinates. Retry only the bounded transient path; do not change dependency versions to mask a transport outage."),
+    ("android_lint", re.compile(
+        r"lintVital|lintDebug|Lint found|"
+        r"NewApi|MissingPermission|SecurityException",
+        re.IGNORECASE),
+     "Android lint or platform compatibility finding",
+     "Inspect the exact lint issue ID and source location. Fix behavior or add a justified narrow suppression; never suppress an entire lint task."),
+]
+
+def diagnose_log(log: str) -> dict[str, str]:
+    """Return a conservative, evidence-linked remediation category."""
+    for category, pattern, title, action in DIAGNOSTIC_RULES:
+        match = pattern.search(log)
+        if match:
+            return {
+                "category": category,
+                "diagnosis": title,
+                "evidence": match.group(0)[:240],
+                "recommended_action": action,
+            }
+    return {
+        "category": "unknown",
+        "diagnosis": "Unclassified failure; root cause not established",
+        "evidence": "No known diagnostic signature matched",
+        "recommended_action": "Preserve the full job log, inspect the first causal error and surrounding stack trace, then add a targeted regression test. Do not apply an automated source patch.",
+    }
+
+
 def issue_title(run_id: int) -> str:
     return f"[BugFix Agent] CI failure in run #{run_id}"
 
@@ -113,6 +186,9 @@ def create_or_find_issue(run: dict[str, Any], reports: list[dict[str, Any]]) -> 
         lines += [
             f"### {report['name']}",
             f"- Classification: {report['classification']}",
+            f"- Diagnosis: {report['diagnosis']['diagnosis']} ({report['diagnosis']['category']})",
+            f"- Evidence: {report['diagnosis']['evidence']}",
+            f"- Recommended next action: {report['diagnosis']['recommended_action']}",
             f"- Job: [#{report['id']}]({report['url']})", "",
             "Log excerpt:", report["excerpt"][:5000], "",
         ]
@@ -140,6 +216,7 @@ def main() -> int:
             "id": job["id"], "name": job.get("name", "unnamed job"),
             "url": job.get("html_url", ""), "classification": classification,
             "excerpt": redact_secrets(excerpt),
+            "diagnosis": diagnose_log(log if "log" in locals() else excerpt),
         })
     all_transient = all(r["classification"] == "transient_infrastructure" for r in reports)
     if all_transient and RUN_ATTEMPT < 2:
