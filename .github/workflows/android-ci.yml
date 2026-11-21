@@ -130,10 +130,18 @@ jobs:
             "platforms;android-35" \
             "emulator" \
             "system-images;android-35;google_apis;x86_64"
+
+          # Pin AVD creation and emulator lookup to the same explicit directory.
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
           echo "no" | avdmanager create avd \
             --name molido-ci-api35 \
             --package "system-images;android-35;google_apis;x86_64" \
             --device pixel_2
+          test -s "$ANDROID_AVD_HOME/molido-ci-api35.ini"
+          test -d "$ANDROID_AVD_HOME/molido-ci-api35"
+          avdmanager list avd
       - name: Boot emulator with software acceleration
         shell: bash
         timeout-minutes: 20
