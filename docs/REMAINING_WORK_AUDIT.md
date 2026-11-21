@@ -1,18 +1,18 @@
 # MolidoVPN AI — Remaining Work Audit and Execution Plan
 
-Audit basis: PR #4 head `4019b4f2666d1b870bb9b397f3dc18be030cf333`, repository source, master acceptance checklist, architecture decisions and Android CI run #220.
+Audit basis: source reviewed through commit `169fa6ffd9deab0070c19f8ba61b5eb1e3f511ba`, master acceptance checklist, architecture decisions and CI runs #217–#221 as observed on 2026-11-21.
 Audit date: 2026-11-21.
 This is a verified work register, not a claim that blocked features are implemented.
 
 ## 1. Verified progress
 
 - PR #4 remains Draft, open and unmerged.
-- CI run #220 on the current head succeeded:
+- CI run #220 succeeded on commit `4019b4f2666d1b870bb9b397f3dc18be030cf333` (NOT the current head):
   - Android source validation: unit tests, lint and release assembly succeeded.
   - Backend: 13 tests passed.
   - API 35 x86_64 emulator: 15 instrumentation tests started and finished successfully.
   - Signed-release job skipped because the run was for a pull request.
-- The CI KVM permission problem seen in run #219 is addressed by the new explicit KVM permission check and hardware-acceleration requirement.
+- The KVM permission gate was added in `4019b4f`, then accidentally reverted by a stale-tree documentation commit `4206558`. It was restored and corrected in `169fa6f` (KVM access check, `-accel on`, valid multiline diagnostics). A completed CI run on the restored workflow is still pending; do not claim current-head CI green.
 - Runtime catalog contains exactly six engine slots and eight platform cores. Only WireGuard is registered.
 - The native engine process test proves separate process PIDs and NOT_IMPLEMENTED status; it does not prove engine startup, FD transfer or TUN ownership.
 - MasterDnsVPN remains NO-GO / research-only and must not be integrated or counted as an additional engine.
@@ -91,7 +91,7 @@ Status: source UI and CI compile/lint tested; physical interaction not tested.
 - Check accessibility, Persian/RTL, screen sizes, touch targets, loading/error states, permission prompts and battery/foreground notifications on a real phone.
 
 ### P6 — CI, supply chain and release
-Current CI #220: PASS for source validation, backend tests and 15 emulator instrumentation tests.
+Latest completed CI #220 (commit `4019b4f`): PASS for source validation, 13 backend tests and 15 emulator instrumentation tests. This is historical evidence for that SHA, not a pass on latest head `169fa6f`. Run #221 was in progress on intermediate SHA `4206558`; a completed run for `169fa6f` is required.
 Remaining:
 - Add merged-manifest assertion for exactly one VpnService.
 - Add dependency locking/provenance, SBOM, license and vulnerability checks for all native artifacts.

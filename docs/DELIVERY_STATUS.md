@@ -2,13 +2,13 @@
 
 Branch under active review: `feature/wireguard-runtime-diagnostics`
 Base: `development/molido-vpn-ai-from-scratch`
-Current reviewed commit: `4019b4f2666d1b870bb9b397f3dc18be030cf333`
+Latest workflow correction: `169fa6ffd9deab0070c19f8ba61b5eb1e3f511ba`
 
 ## Release decision
 
-**Stable Production: BLOCKED.** CI is now green on the current PR head, but this is not proof of real VPN data-plane operation. The central app-owned TUN service, descriptor handoff, custom WireGuard backend, physical-device acceptance, production signing verification, and external engine gates remain incomplete. No Stable APK is approved or distributed.
+**Stable Production: BLOCKED.** CI #220 passed on its own commit, but no full CI result has yet been confirmed for the latest corrected PR head, but this is not proof of real VPN data-plane operation. The central app-owned TUN service, descriptor handoff, custom WireGuard backend, physical-device acceptance, production signing verification, and external engine gates remain incomplete. No Stable APK is approved or distributed.
 
-## Latest CI evidence — run #220
+## Latest completed CI evidence — run #220 (not the latest PR head)
 
 [Android CI #220](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44940225549), commit `4019b4f2666d1b870bb9b397f3dc18be030cf333`, completed successfully:
 
@@ -17,7 +17,7 @@ Current reviewed commit: `4019b4f2666d1b870bb9b397f3dc18be030cf333`
 - Android Keystore instrumentation: **15 tests started, 15 finished, BUILD SUCCESSFUL** on API 35 x86_64 emulator with KVM.
 - Signed-release job: **skipped**, as expected for a pull-request event.
 
-This run resolves the earlier CI infrastructure failure caused by missing KVM access and demonstrates that the instrumentation suite executed. It does not resolve the central TUN ownership architecture or establish real-device connectivity. Earlier run #217's 0/0 instrumentation process crash remains historical evidence; run #220 passed the current instrumentation suite.
+Run #220 passed after the KVM gate was added in commit `4019b4f`. A subsequent documentation commit was mistakenly created from a stale base tree and reverted that workflow change. The KVM gate and diagnostics were restored in commit `169fa6f`; the restored workflow has not yet been verified by a completed CI run. Run #221 was still executing against the intermediate commit `4206558` when this status was checked. Therefore CI is NOT yet confirmed green on the latest PR head. It does not resolve the central TUN ownership architecture or establish real-device connectivity. Earlier run #217's 0/0 instrumentation process crash remains historical evidence; run #220 passed the current instrumentation suite.
 
 Non-blocking warnings observed in CI:
 - Deprecated Android system UI APIs in `MainActivity.kt`.
