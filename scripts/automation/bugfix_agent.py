@@ -100,6 +100,14 @@ def extract_job_log(archive: bytes) -> str:
     return "\n".join(chunks)
 
 
+def read_bounded_log_response(response: Any) -> bytes:
+    """Read at most the configured archive limit plus one detection byte."""
+    archive = response.read(MAX_LOG_ARCHIVE_BYTES + 1)
+    if len(archive) > MAX_LOG_ARCHIVE_BYTES:
+        raise ValueError("log archive exceeds size limit")
+    return archive
+
+
 def download_job_log(job_id: int) -> str:
     req = urllib.request.Request(
         f"{API}/repos/{REPO}/actions/jobs/{job_id}/logs",
@@ -109,7 +117,7 @@ def download_job_log(job_id: int) -> str:
     )
     opener = urllib.request.build_opener(SafeRedirectHandler())
     with opener.open(req, timeout=60) as response:
-        archive = response.read()
+        archive = read_bounded_log_response(response)
     return extract_job_log(archive)
 
 
@@ -123,8 +131,12 @@ def redact_secrets(text: str) -> str:
     text = re.sub(r"(?i)\b(password|passwd|token|secret|api[_-]?key|keystore[_-]?(password|base64))\b(\s*[:=]\s*)\S+",
                   r"\1\3[REDACTED]", text)
     text = re.sub(r"(?i)(https?://[^:/\s]+:)[^@/\s]+@", r"\1[REDACTED]@", text)
-    text = re.sub(r"(?i)([?&](?:access_token|refresh_token|token|api_key|password|secret)=)[^&\s]+",
-                  r"\1[REDACTED]", text)
+    text = re.sub(
+        r"(?i)([?&](?:access_token|refresh_token|token|api_key|password|secret|"
+        r"x-amz-(?:credential|signature|security-token)|"
+        r"x-goog-(?:credential|signature)|sig|signature)=)[^&\\s]+",
+        r"\\1[REDACTED]", text,
+    )
     text = re.sub(r"(?i)\b(AKIA[0-9A-Z]{16})\b", "[REDACTED AWS KEY]", text)
     return text
 
