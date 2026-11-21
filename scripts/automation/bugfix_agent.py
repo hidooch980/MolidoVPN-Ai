@@ -56,6 +56,19 @@ class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
         return redirected
 
 
+def extract_job_log(archive: bytes) -> str:
+    """Extract only text log members from the Actions ZIP payload."""
+    with zipfile.ZipFile(BytesIO(archive)) as zipped:
+        members = [
+            name for name in zipped.namelist()
+            if name.lower().endswith((".txt", ".log"))
+        ]
+        return "\n".join(
+            zipped.read(name).decode("utf-8", errors="replace")
+            for name in members
+        )
+
+
 def download_job_log(job_id: int) -> str:
     req = urllib.request.Request(
         f"{API}/repos/{REPO}/actions/jobs/{job_id}/logs",
@@ -66,12 +79,7 @@ def download_job_log(job_id: int) -> str:
     opener = urllib.request.build_opener(SafeRedirectHandler())
     with opener.open(req, timeout=60) as response:
         archive = response.read()
-    with zipfile.ZipFile(BytesIO(archive)) as zipped:
-        return "\n".join(
-            zipped.read(name).decode("utf-8", errors="replace")
-            for name in zipped.namelist()
-            if name.lower().endswith((".txt", ".log"))
-        )
+    return extract_job_log(archive)
 
 
 def redact_secrets(text: str) -> str:
