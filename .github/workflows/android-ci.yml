@@ -140,7 +140,13 @@ jobs:
         run: |
           set -euo pipefail
           adb start-server
-          nohup emulator -avd molido-ci-api35 \
+          EMULATOR_BIN="${ANDROID_HOME:-/usr/local/lib/android/sdk}/emulator/emulator"
+          if [ ! -x "$EMULATOR_BIN" ]; then
+            echo "Android Emulator binary is missing or not executable: $EMULATOR_BIN"
+            find "${ANDROID_HOME:-/usr/local/lib/android/sdk}" -maxdepth 3 -type f -name emulator -print || true
+            exit 1
+          fi
+          nohup "$EMULATOR_BIN" -avd molido-ci-api35 \
             -no-window -gpu swiftshader_indirect -no-snapshot -noaudio \
             -no-boot-anim -camera-back none -no-metrics -accel off \
             > "$RUNNER_TEMP/molido-emulator.log" 2>&1 &
