@@ -165,6 +165,14 @@ def diagnose_log(log: str) -> dict[str, str]:
     }
 
 
+def should_retry_failed_jobs(reports: list[dict[str, Any]], run_attempt: int) -> bool:
+    """Retry only a non-empty all-transient failure set, once."""
+    return bool(reports) and run_attempt < 2 and all(
+        report.get("classification") == "transient_infrastructure"
+        for report in reports
+    )
+
+
 def issue_title(run_id: int) -> str:
     return f"[BugFix Agent] CI failure in run #{run_id}"
 
@@ -221,8 +229,7 @@ def main() -> int:
             "excerpt": redact_secrets(excerpt),
             "diagnosis": diagnose_log(diagnostic_text),
         })
-    all_transient = all(r["classification"] == "transient_infrastructure" for r in reports)
-    if all_transient and RUN_ATTEMPT < 2:
+    if should_retry_failed_jobs(reports, RUN_ATTEMPT):
         api("POST", f"/repos/{REPO}/actions/runs/{RUN_ID}/rerun-failed-jobs", {})
         print(f"BugFix Agent: safely retried transient infrastructure failures once in run #{RUN_ID}.")
         return 0
