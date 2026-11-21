@@ -154,7 +154,7 @@ def diagnose_log(log: str) -> dict[str, str]:
             return {
                 "category": category,
                 "diagnosis": title,
-                "evidence": match.group(0)[:240],
+                "evidence": redact_secrets(match.group(0)[:240]),
                 "recommended_action": action,
             }
     return {
