@@ -140,3 +140,18 @@ Required gate:
 - New engine slot / second VPNService / TUN: **None**
 - Runtime activation: **DISABLED**
 - Stable/production claim: **NOT APPROVED**
+
+
+## Expanded audit update — 2026-11-21
+
+The expanded static review is recorded separately in [MASTERDNSVPN_EXPANDED_AUDIT_2026-11-21.md](MASTERDNSVPN_EXPANDED_AUDIT_2026-11-21.md).
+
+Additional source observations include:
+- Upstream defaults select XOR; method 2 is unauthenticated ChaCha20; AES key derivation uses MD5 for method 3, raw zero-padded bytes for method 4, and unsalted single SHA-256 for method 5.
+- The default 32-character generated key string represents 16 bytes of random input entropy, not 256 bits of input entropy.
+- The Android wrapper permits cleartext traffic in its base network-security configuration.
+- The community gVisor bridge falls back to the original TUN fd if `dup` fails, with an acknowledged double-close risk.
+- The bridge forwards TCP through local SOCKS5, handles UDP DNS in-process, and refuses other UDP destinations; full IP-VPN equivalence must not be assumed.
+- The community mobile wrapper has global singleton client/TUN lifecycle state and its own Go/gVisor dependency set.
+
+Decision remains **NO-GO**. No prototype was designed because the audit gate failed. No external build, CI run, APK install, device test, fuzzing, or penetration test was performed.
