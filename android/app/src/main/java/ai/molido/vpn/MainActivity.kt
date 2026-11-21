@@ -42,6 +42,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var wireGuardStateView: TextView
     private lateinit var providerSpinner: Spinner
     private lateinit var countrySpinner: Spinner
+    private lateinit var countryAdapter: ArrayAdapter<String>
     private lateinit var providerStatusView: TextView
     private var controlsBusy = false
     private val policyButtons = mutableMapOf<NetworkPolicy, Button>()
@@ -196,7 +197,15 @@ class MainActivity : ComponentActivity() {
         providerSpinner = dropdown(selectableCapabilities.map { it.displayName })
         routingCard.addView(providerSpinner, LinearLayout.LayoutParams(-1, dp(50)))
         routingCard.addView(label("کشور مقصد", 13f, WHITE, true).apply { setPadding(0, dp(12), 0, dp(5)) })
-        countrySpinner = dropdown(listOf("کشور در پروفایل / سرویس تعیین می‌شود"))
+        countryAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item,
+            mutableListOf("کشور در پروفایل / سرویس تعیین می‌شود")).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        countrySpinner = Spinner(this).apply {
+            adapter = countryAdapter
+            background = rounded(Color.rgb(18, 54, 67), STROKE, 14f)
+            setPadding(dp(10), 0, dp(10), 0)
+        }
         routingCard.addView(countrySpinner, LinearLayout.LayoutParams(-1, dp(50)))
         countrySpinner.isEnabled = false
         providerStatusView = label(
@@ -213,11 +222,9 @@ class MainActivity : ComponentActivity() {
                     capability.availableCountries.isNotEmpty()
                 val countryOptions = capability?.availableCountries.orEmpty()
                 val options = listOf("کشور در پروفایل / سرویس تعیین می‌شود") + countryOptions
-                (countrySpinner.adapter as? ArrayAdapter<String>)?.let { adapter ->
-                    adapter.clear()
-                    adapter.addAll(options)
-                    adapter.notifyDataSetChanged()
-                }
+                countryAdapter.clear()
+                countryAdapter.addAll(options)
+                countryAdapter.notifyDataSetChanged()
                 countrySpinner.setSelection(0)
             }
         }
