@@ -114,6 +114,24 @@ class BugFixAgentClassificationTests(unittest.TestCase):
         self.assertNotIn("AKIA1234567890ABCDEF", result)
         self.assertIn("[REDACTED AWS KEY]", result)
 
+    def test_environment_secret_assignments_and_quoted_json_are_redacted(self):
+        sample = (
+            "ANDROID_KEYSTORE_PASSWORD=store-secret "
+            "ANDROID_KEY_PASSWORD=key-secret "
+            "AWS_SECRET_ACCESS_KEY=aws-secret "
+            "AWS_SESSION_TOKEN=session-secret "
+            '"client_secret": "json-secret"'
+        )
+        result = agent.redact_secrets(sample)
+        for secret in ("store-secret", "key-secret", "aws-secret",
+                       "session-secret", "json-secret"):
+            self.assertNotIn(secret, result)
+
+    def test_aws_temporary_session_access_key_is_redacted(self):
+        result = agent.redact_secrets("AWS_ACCESS_KEY_ID=ASIA1234567890ABCDEF")
+        self.assertNotIn("ASIA1234567890ABCDEF", result)
+        self.assertIn("[REDACTED AWS KEY]", result)
+
     def test_signed_cloud_url_query_credentials_are_redacted(self):
         sample = (
             "https://storage.example/log?X-Amz-Credential=aws-secret"

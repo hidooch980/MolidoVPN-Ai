@@ -1,7 +1,7 @@
 # Autonomous Bug-Fix Agent
 
 ## Current verified capabilities
-- Classifies CI failures, diagnoses known categories, redacts common secrets, retries only first-attempt all-transient failures once, and creates/reuses evidence-backed GitHub issues. Log ZIP extraction and the network response read are bounded by archive size, member count, per-member and total expanded sizes, and compression ratio. Signed AWS, Google Cloud, and Azure URL query credentials are redacted from issue evidence. Redirects drop GitHub authorization on cross-host/port changes and HTTPS downgrades.
+- Classifies CI failures, diagnoses known categories, redacts common secrets, retries only first-attempt all-transient failures once, and creates/reuses evidence-backed GitHub issues. Log ZIP extraction and the network response read are bounded by archive size, member count, per-member and total expanded sizes, and compression ratio. Signed AWS, Google Cloud, and Azure URL query credentials are redacted from issue evidence. Environment-style and quoted JSON secret assignments, including Android signing and AWS temporary credentials, are redacted. Redirects drop GitHub authorization on cross-host/port changes and HTTPS downgrades.
 - Latest completed evidence before the expanded regression suite: the bug-fix agent classification tests, Android unit tests/lint/assemble, and pinned WireGuard Go-only source build passed. Emulator Keystore instrumentation for run #280 was still running at the last status check; no final green-run claim is made.
 
 ## Patch-policy guardrail (proposal validation only)
@@ -16,6 +16,6 @@
 - Unknown, mixed, compilation, assertion, instrumentation, and security failures are not automatically retried as transient infrastructure.
 
 ## Verification
-- Bug-fix agent and patch-policy tests: `python -m unittest scripts/automation/test_bugfix_agent.py -v` (38 tests are now defined; the two newest regression tests cover pre-extraction network read limits and signed cloud-URL secret redaction. Their CI run must complete successfully before this expanded suite is marked green).
+- Bug-fix agent and patch-policy tests: `python -m unittest scripts/automation/test_bugfix_agent.py -v` (40 tests are now defined; the two newest regression tests cover pre-extraction network read limits and signed cloud-URL secret redaction. Their CI run must complete successfully before this expanded suite is marked green).
 - Patch policy tests are included in the same test module.
 - Workflow: `.github/workflows/android-ci.yml`
