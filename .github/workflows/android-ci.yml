@@ -196,10 +196,19 @@ jobs:
       - name: Collect emulator diagnostics on failure
         if: failure()
         shell: bash
+        timeout-minutes: 5
         run: |
-          adb devices -l || true
-          adb logcat -d -t 1200 || true
-          tail -n 300 "$RUNNER_TEMP/molido-emulator.log" || true
+          set +e
+          echo "=== ADB devices (15s limit) ==="
+          timeout 15s adb devices -l || true
+          echo "=== Android logcat (45s limit) ==="
+          timeout 45s adb logcat -d -t 1200 || true
+          echo "=== Emulator process log ==="
+          if [ -f "$RUNNER_TEMP/molido-emulator.log" ]; then
+            tail -n 300 "$RUNNER_TEMP/molido-emulator.log"
+          else
+            echo "Emulator log file was not created."
+          fi
       - name: Stop emulator
         if: always()
         shell: bash
