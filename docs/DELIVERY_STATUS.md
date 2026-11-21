@@ -10,25 +10,27 @@ Latest branch head at this status update: `0affc855ae78717a93757e6dff3098b9d1d4a
 
 ## Latest CI evidence
 
-- [Run #44942055091](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44942055091), commit `6f0b0cf20ed23bc2ed8fb69ff45991b18285bd6a`: Android source validation, backend tests, and Android Keystore emulator instrumentation all passed. Signed release was skipped for the pull-request event.
-- [Run #44944204445](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44944204445), commit `4fb11089a4cb6a78c01a15d4e0c484672f3ace5`: completed successfully on the first version of the manifest instrumentation test; the next commit only removed an unused import.
-- [Run #44944220579](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44944220579), commit `f0dfd741a0186ba1be0c3bc356f3b4a217772865`: backend and Android source validation passed, but emulator instrumentation failed before tests ran because Gradle could not resolve `org.jetbrains.kotlin:kotlin-reflect:2.0.20` and `org.jetbrains:annotations:13.0` from the configured repositories. This is a dependency-resolution failure, not evidence that the new manifest assertion failed.
-- Workflow commit `3e4611db278cf0a52b2c3c075a1e1e5d2e291e60` adds bounded retries **only** for recognizable repository/dependency transport failures. Compilation, assertion, install, and instrumentation failures remain hard failures.
-- Run [#44945055377](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44945055377) was executing on that workflow commit when this status was updated. Run [#44945289340](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44945289340) was queued for current head `0affc855ae78717a93757e6dff3098b9d1d4afcb`. **CI is not yet confirmed green on the current branch head.**
+- [Run #44945055377](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44945055377), commit `3e4611db278cf0a52b2c3c075a1e1e5d2e291e60`: Android source validation, backend tests, and Android Keystore emulator instrumentation passed. The emulator log reports **16 tests started, 16 finished, BUILD SUCCESSFUL**. Signed release was skipped for the pull-request event.
+- [Run #44945404147](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44945404147), commit `afc1f61623bea79c6ef81138d0e5fc51ad6d71c0`: completed successfully on the same Android/backend/emulator validation workflow.
+- [Run #44945698971](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44945698971), commit `c2e3abae677cb1390051cc654e13945f21d97747`: Android source validation, backend tests, and all 16 emulator tests passed. The newly added WireGuard source-build job failed during Android SDK package setup because the action received a newline-separated package list as one invalid package argument; no upstream build was attempted.
+- Workflow commit `93036fe118d6d9f7a23d00e8bee66aa2410f03a9` corrected the SDK package list to the action's space-separated format. [Run #44945829405](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44945829405) is running on that correction. Its source-build job has passed SDK/JDK/Go setup and is executing the pinned upstream Go-only build; final result is not yet known.
+- The instrumentation manifest test asserts exactly one service has `BIND_VPN_SERVICE`, currently upstream `GoBackend$VpnService`. This is a regression guard only; it does not prove Molido owns TUN centrally.
+- The CI workflow now retries only recognizable transient Gradle repository/dependency resolution failures. Compilation, assertion, installation, and instrumentation failures remain hard failures.
 
-The added `SingleVpnServiceManifestTest` inspects the installed merged APK manifest and asserts exactly one service has `BIND_VPN_SERVICE`, currently the upstream `GoBackend$VpnService`. This is a regression guard only; it does not prove Molido owns TUN centrally.
+CI is **not yet confirmed green on the current branch head**, and the new source-build gate has not yet passed.
 
-## Recent architecture/provenance corrections
+## Recent architecture and source review
 
-- `SINGLE_TUN_OWNER_MIGRATION.md` now accurately records that `SessionSupervisor` reserves the shared generation-scoped lease and passes it to WireGuard; the adapter validates it and does not independently acquire a second lease. Session and lease remain separate state ledgers, and the Android VPN service is still upstream-owned.
-- Official WireGuard tag `1.0.20260315` was inspected: annotated tag object `31ba2dbd3ac793f2e2bb386310d837bdc0cd0bfd` is reported by GitHub as PGP-signature verified and peels to `0856e2ecf7f3cce0e9c9014db3ad7665669adce5`. The peeled commit is not independently signed. This is newer than the currently consumed AAR `1.0.20260102`, so it is a candidate only, not an approved drop-in.
-- The upstream source review confirms the current backend calls `VpnService.Builder.establish()`, detaches the FD into private native `wgTurnOn(..., int tunFd, ...)`, and protects the resulting IPv4/IPv6 sockets through its own service. A supported public AAR API for injecting an externally owned TUN FD was not found.
-- The upstream source tree pins `wireguard-tools` (GPL-2) and `termux-elf-cleaner` (GPL-3.0-or-later). The latter is a build-time tool; the former is compiled into native outputs. The complete tunnel/native build must not be described as Apache-2.0-only. Legal/distribution compatibility review is required before integrating or redistributing a source-built backend.
+- `SINGLE_TUN_OWNER_MIGRATION.md` now accurately records that `SessionSupervisor` reserves the shared generation-scoped lease and passes it to WireGuard; the adapter validates it and does not independently acquire a second lease. Session and lease remain separate state ledgers, and Android VPN service ownership remains upstream.
+- The exact current AAR source tag `1.0.20260102` was inspected: annotated tag object `3831cab2da844319291459308a6e535d36dde4b3` is reported by GitHub as PGP-signature verified and peels to `09b75c2bd37f749e2a8c85876394854113c74be7`. The peeled commit is not independently signed.
+- The source review confirms the current backend creates TUN with `VpnService.Builder.establish()`, detaches the descriptor into private native `wgTurnOn(..., int tunFd, ...)`, and protects its IPv4/IPv6 sockets through its own service. No supported public AAR API for injecting an externally owned TUN FD was found.
+- The source tree also pins `wireguard-tools` (GPL-2) and `termux-elf-cleaner` (GPL-3.0-or-later). A Go-only build may avoid packaging these unused command-line tools; this must be proven by the new source-build job and an APK/AAR native-library inventory/license scan. Do not describe the complete native bundle as Apache-2.0-only.
+- The new `scripts/ci/build-wireguard-go-only.sh` checks the exact upstream tag object and peeled commit, builds only `libwg-go.so` without initializing the GPL submodules, and rejects AAR output containing `libwg.so` or `libwg-quick.so`. This is a build smoke test, not the production backend migration.
 
 Non-blocking warnings previously observed in CI:
 - Deprecated Android system UI APIs in `MainActivity.kt`.
 - Unchecked `SpinnerAdapter` to `ArrayAdapter<String>` cast.
-- Native WireGuard libraries could not be stripped and were packaged unchanged.
+- Native WireGuard libraries could not be stripped and were packaged unchanged in the earlier AAR-based build.
 - GitHub Actions warns that several configured actions target Node.js 20 while the runner is transitioning to Node.js 24.
 
 ## Product decisions
