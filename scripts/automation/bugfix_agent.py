@@ -83,6 +83,10 @@ def redact_secrets(text: str) -> str:
                   r"\1[REDACTED]", text)
     text = re.sub(r"(?i)\b(password|passwd|token|secret|api[_-]?key|keystore[_-]?(password|base64))\b(\s*[:=]\s*)\S+",
                   r"\1\3[REDACTED]", text)
+    text = re.sub(r"(?i)(https?://[^:/\s]+:)[^@/\s]+@", r"\1[REDACTED]@", text)
+    text = re.sub(r"(?i)([?&](?:access_token|refresh_token|token|api_key|password|secret)=)[^&\s]+",
+                  r"\1[REDACTED]", text)
+    text = re.sub(r"(?i)\b(AKIA[0-9A-Z]{16})\b", "[REDACTED AWS KEY]", text)
     return text
 
 def classify_log(log: str) -> str:
@@ -201,7 +205,7 @@ def create_or_find_issue(run: dict[str, Any], reports: list[dict[str, Any]]) -> 
             "Log excerpt:", report["excerpt"][:5000], "",
         ]
     created = api("POST", f"/repos/{REPO}/issues", {
-        "title": title, "body": "\n".join(lines), "labels": ["bug"],
+        "title": title, "body": "\n".join(lines),
     })
     return created["html_url"]
 
