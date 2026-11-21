@@ -87,3 +87,10 @@ Architecture decision:
 Current status: **Preliminary source review complete; critical crypto and secret-storage findings open; complete audit pending; runtime disabled; no connection tested; not production-ready.**
 
 Review report: [docs/research/MASTERDNSVPN_SECURITY_REVIEW.md](../research/MASTERDNSVPN_SECURITY_REVIEW.md). No Molido runtime code or engine catalog was changed.
+
+
+## Expanded audit result — 2026-11-21
+
+The expanded static audit is recorded at [MASTERDNSVPN_EXPANDED_AUDIT_2026-11-21.md](../research/MASTERDNSVPN_EXPANDED_AUDIT_2026-11-21.md).
+
+Final decision remains **NO-GO**: do not design or implement a prototype yet. Critical/high crypto, plaintext secret persistence, app-wide cleartext networking, separate VPNService/TUN ownership, unsafe fd-duplication fallback, DNS transport limitations, and unverified mobile build provenance remain open. The candidate stays research-only and runtime-disabled. No seventh engine, adapter, Connect action, service, or TUN owner was added.
