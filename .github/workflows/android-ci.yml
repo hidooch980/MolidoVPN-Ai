@@ -300,10 +300,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.23.1'
       - name: Set up Android SDK and native toolchain
         uses: android-actions/setup-android@v3
         with:
