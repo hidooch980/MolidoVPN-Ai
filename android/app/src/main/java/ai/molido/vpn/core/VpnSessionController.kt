@@ -121,7 +121,16 @@ class VpnSessionController(
                 publishState()
                 throw failure
             }
-            check(supervisor.release(slot)) { "Session ownership could not be released after startup rollback" }
+            if (!supervisor.release(slot)) {
+                // Preserve the only idempotent cleanup handle until the ownership
+                // authority confirms that the shared lease is actually released.
+                activeSession = session
+                activeOwner = slot
+                supervisor.markFailed(slot)
+                record("START_ROLLBACK_PENDING", "Ownership release was not confirmed; cleanup handle retained")
+                publishState()
+                return false
+            }
             record("START_ROLLBACK_COMPLETE", "Session startup rolled back")
             publishState()
             return false
@@ -151,9 +160,16 @@ class VpnSessionController(
             publishState()
             throw failure
         }
+        if (!supervisor.release(owner)) {
+            // Do not discard the only retry handle while the coordinator still holds
+            // the lease. FAILED permits a subsequent disconnect() to retry idempotently.
+            supervisor.markFailed(owner)
+            record("SESSION_RELEASE_PENDING", "Transport stopped but shared ownership release was not confirmed")
+            publishState()
+            return false
+        }
         activeSession = null
         activeOwner = null
-        check(supervisor.release(owner)) { "Session ownership could not be released after cleanup" }
         record("SESSION_STOPPED", "VPN engine session stopped and ownership released")
         publishState()
         return true
@@ -228,9 +244,17 @@ class VpnSessionController(
                 reason = "Previous session cleanup failed; ownership retained for retry"
             )
         }
+        if (!supervisor.release(owner)) {
+            supervisor.markFailed(owner)
+            record("RECOVERY_RELEASE_PENDING", "Recovery cleanup returned but ownership release was not confirmed")
+            publishState()
+            return RecoveryPlan(
+                RecoveryAction.NONE, attempt = attempt,
+                reason = "Shared ownership remains held; cleanup handle retained for retry"
+            )
+        }
         activeSession = null
         activeOwner = null
-        check(supervisor.release(owner)) { "Session ownership could not be released after recovery cleanup" }
         record("RECOVERY_CLEANUP_COMPLETE", "Previous engine released ownership before retry")
         publishState()
         return plan
