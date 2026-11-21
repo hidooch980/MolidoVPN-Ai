@@ -25,6 +25,16 @@ The candidate `GoBackend.java` confirms the integration boundary:
 - The current UP path builds the TUN with `VpnService.Builder.establish()`, detaches its descriptor into `wgTurnOn`, then calls `service.protect()` for the WireGuard IPv4 and IPv6 sockets.
 - The public backend API does not expose caller-supplied TUN FD injection. A Molido-owned service therefore requires a source-level, reviewed backend/JNI change and an explicit socket-protection callback/path; it cannot be achieved by merely passing a descriptor to the existing AAR API.
 
+
+The recursive upstream tree also contains these pinned gitlinks:
+
+| Path | Pinned revision | Observed license / role | Distribution note |
+|---|---|---|---|
+| `tunnel/tools/wireguard-tools` | `e2ecaaa739144997ccff89d6ad6ec81698ea6ced` | `COPYING` is GNU GPL version 2; CMake compiles its sources into `libwg.so` and `libwg-quick.so` | These native outputs are part of the tunnel build; include matching source and complete GPL notices when distributing binaries. Compatibility with the overall app distribution model requires legal review. |
+| `tunnel/tools/elf-cleaner` | `7efc05090675ec6161b7def862728086a26c3b1f` | Upstream README identifies GPL-3.0-or-later; used as a build-time ELF post-processing tool | Not a runtime engine; include license/source notices if source bundle or build environment redistributes it. |
+
+This means the tunnel module's Apache-2.0 POM/COPYING does **not** describe every component used by its native build. The GPL-2 and GPL-3-or-later components must remain separately inventoried; do not claim the complete native bundle is Apache-2.0-only. No legal compatibility conclusion is made here.
+
 No upstream source, dependency, manifest, or runtime code was changed by this provenance/API review.
 
 ## Why this path
