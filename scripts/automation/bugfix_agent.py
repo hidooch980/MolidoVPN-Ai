@@ -56,17 +56,48 @@ class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
         return redirected
 
 
+MAX_LOG_ARCHIVE_BYTES = 20 * 1024 * 1024
+MAX_LOG_FILES = 100
+MAX_LOG_MEMBER_BYTES = 2 * 1024 * 1024
+MAX_LOG_TOTAL_BYTES = 10 * 1024 * 1024
+MAX_LOG_COMPRESSION_RATIO = 200
+
+
 def extract_job_log(archive: bytes) -> str:
-    """Extract only text log members from the Actions ZIP payload."""
+    """Extract bounded text logs only; reject oversized or suspicious ZIP payloads."""
+    if not isinstance(archive, bytes) or len(archive) > MAX_LOG_ARCHIVE_BYTES:
+        raise ValueError("log archive exceeds size limit")
+    chunks: list[str] = []
+    total = 0
     with zipfile.ZipFile(BytesIO(archive)) as zipped:
         members = [
-            name for name in zipped.namelist()
-            if name.lower().endswith((".txt", ".log"))
+            info for info in zipped.infolist()
+            if not info.is_dir() and info.filename.lower().endswith((".txt", ".log"))
         ]
-        return "\n".join(
-            zipped.read(name).decode("utf-8", errors="replace")
-            for name in members
-        )
+        if len(members) > MAX_LOG_FILES:
+            raise ValueError("log archive contains too many text files")
+        for info in members:
+            if info.flag_bits & 0x1:
+                raise ValueError("encrypted log archive member is not supported")
+            mode = (info.external_attr >> 16) & 0o170000
+            if mode == 0o120000:
+                raise ValueError("symbolic-link log member is not supported")
+            if info.file_size > MAX_LOG_MEMBER_BYTES:
+                raise ValueError("log archive member exceeds size limit")
+            if info.file_size and (
+                info.compress_size == 0
+                or info.file_size / info.compress_size > MAX_LOG_COMPRESSION_RATIO
+            ):
+                raise ValueError("suspicious log compression ratio")
+            if total + info.file_size > MAX_LOG_TOTAL_BYTES:
+                raise ValueError("expanded log archive exceeds total size limit")
+            with zipped.open(info, "r") as member:
+                data = member.read(MAX_LOG_MEMBER_BYTES + 1)
+            if len(data) != info.file_size or len(data) > MAX_LOG_MEMBER_BYTES:
+                raise ValueError("log archive member size does not match metadata")
+            total += len(data)
+            chunks.append(data.decode("utf-8", errors="replace"))
+    return "\n".join(chunks)
 
 
 def download_job_log(job_id: int) -> str:

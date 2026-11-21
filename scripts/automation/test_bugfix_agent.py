@@ -126,6 +126,28 @@ class BugFixAgentClassificationTests(unittest.TestCase):
         self.assertIn("runner finished", extracted)
         self.assertNotIn("should-not-be-read", extracted)
 
+    def test_log_archive_rejects_oversized_member(self):
+        buffer = BytesIO()
+        with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("huge.log", "x" * (2 * 1024 * 1024 + 1))
+        with self.assertRaises(ValueError):
+            agent.extract_job_log(buffer.getvalue())
+
+    def test_log_archive_rejects_too_many_members(self):
+        buffer = BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            for index in range(101):
+                archive.writestr(f"log-{index}.txt", "ok")
+        with self.assertRaises(ValueError):
+            agent.extract_job_log(buffer.getvalue())
+
+    def test_log_archive_rejects_suspicious_compression_ratio(self):
+        buffer = BytesIO()
+        with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("ratio.log", "a" * 100_000)
+        with self.assertRaises(ValueError):
+            agent.extract_job_log(buffer.getvalue())
+
     def test_cross_host_log_redirect_drops_authorization(self):
         request = Request("https://api.github.com/logs")
         request.add_header("Authorization", "Bearer sensitive-token")
@@ -157,7 +179,9 @@ class PatchPolicyTests(unittest.TestCase):
     def _plan(self, path="scripts/automation/fix_rule.py", additions=3, deletions=1):
         return {
             "files": [{"path": path, "additions": additions, "deletions": deletions}],
-            "diff": f"diff --git a/{path} b/{path}\n+++ b/{path}\n+safe\n",
+            "diff": (f"diff --git a/{path} b/{path}\\n--- a/{path}\\n+++ b/{path}\\n"
+                     + "".join("+added\\n" for _ in range(additions))
+                     + "".join("-removed\\n" for _ in range(deletions))),
         }
 
     def test_allows_small_allowlisted_automation_proposal(self):
@@ -202,7 +226,7 @@ class PatchPolicyTests(unittest.TestCase):
     def test_rejects_diff_path_mismatch(self):
         from scripts.automation.patch_policy import validate_patch_plan
         p = self._plan()
-        p["diff"] = "diff --git a/other b/other\n+++ b/other\n"
+        p["diff"] = "diff --git a/other b/other\n--- a/other\n+++ b/other\n"
         self.assertEqual(validate_patch_plan(p)[1], "diff_paths_mismatch")
 
     def test_rejects_binary_diff(self):
@@ -210,6 +234,18 @@ class PatchPolicyTests(unittest.TestCase):
         p = self._plan()
         p["diff"] = "GIT binary patch"
         self.assertEqual(validate_patch_plan(p)[1], "binary_or_nul_diff")
+
+    def test_rejects_diff_line_count_mismatch(self):
+        from scripts.automation.patch_policy import validate_patch_plan
+        p = self._plan()
+        p["diff"] = p["diff"].replace("+added\\n", "", 1)
+        self.assertEqual(validate_patch_plan(p)[1], "diff_line_count_mismatch")
+
+    def test_rejects_malformed_diff_headers(self):
+        from scripts.automation.patch_policy import validate_patch_plan
+        p = self._plan()
+        p["diff"] = p["diff"].replace("--- a/", "--- x/", 1)
+        self.assertEqual(validate_patch_plan(p)[1], "malformed_diff_headers")
 
     def test_rejects_unknown_fields_and_non_object(self):
         from scripts.automation.patch_policy import validate_patch_plan
