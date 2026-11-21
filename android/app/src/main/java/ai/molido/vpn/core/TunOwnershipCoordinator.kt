@@ -157,6 +157,11 @@ class TunOwnershipCoordinator {
         return true
     }
 
+    /** True only while this exact generation is reserved and has not activated a transport. */
+    @Synchronized
+    fun isReserved(token: TunLeaseToken): Boolean =
+        matches(token) && state == TunLeaseState.RESERVED
+
     @Synchronized
     fun snapshot(): TunLeaseSnapshot = TunLeaseSnapshot(
         owner = owner,
