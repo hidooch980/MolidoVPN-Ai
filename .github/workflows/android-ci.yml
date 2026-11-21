@@ -361,3 +361,34 @@ jobs:
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14
+
+  autonomous-bugfix-agent:
+    name: Autonomous CI bug-fix agent
+    if: always() && (needs.validate.result == 'failure' || needs.backend.result == 'failure' || needs.android-keystore-instrumentation.result == 'failure' || needs.wireguard-source-build.result == 'failure')
+    needs:
+      - validate
+      - backend
+      - android-keystore-instrumentation
+      - wireguard-source-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
+      issues: write
+    env:
+      BUGFIX_RUN_ID: ${{ github.run_id }}
+      BUGFIX_RUN_ATTEMPT: ${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test bug-fix agent classification rules
+        run: python -m unittest scripts/automation/test_bugfix_agent.py -v
+      - name: Diagnose and safely recover failed CI jobs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/automation/bugfix_agent.py
