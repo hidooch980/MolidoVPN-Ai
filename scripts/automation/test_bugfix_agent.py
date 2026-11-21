@@ -48,5 +48,18 @@ class BugFixAgentClassificationTests(unittest.TestCase):
         )
 
 
+    def test_private_key_is_redacted_from_issue_excerpt(self):
+        sample = "-----BEGIN PRIVATE KEY-----\\nsecret-material\\n-----END PRIVATE KEY-----"
+        result = agent.redact_secrets(sample)
+        self.assertNotIn("secret-material", result)
+        self.assertIn("[REDACTED PRIVATE KEY]", result)
+
+    def test_token_and_password_are_redacted(self):
+        sample = "token=abc123 password: super-secret"
+        result = agent.redact_secrets(sample)
+        self.assertNotIn("abc123", result)
+        self.assertNotIn("super-secret", result)
+
+
 if __name__ == "__main__":
     unittest.main()
