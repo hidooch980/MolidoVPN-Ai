@@ -114,6 +114,30 @@ class BugFixAgentClassificationTests(unittest.TestCase):
         self.assertNotIn("AKIA1234567890ABCDEF", result)
         self.assertIn("[REDACTED AWS KEY]", result)
 
+    def test_signed_cloud_url_query_credentials_are_redacted(self):
+        sample = (
+            "https://storage.example/log?X-Amz-Credential=aws-secret"
+            "&X-Amz-Signature=signature-secret&X-Amz-Security-Token=session-secret"
+            "&X-Goog-Signature=google-secret&sig=azure-secret"
+        )
+        result = agent.redact_secrets(sample)
+        for secret in ("aws-secret", "signature-secret", "session-secret",
+                       "google-secret", "azure-secret"):
+            self.assertNotIn(secret, result)
+        self.assertEqual(result.count("[REDACTED]"), 5)
+
+    def test_log_download_response_is_bounded_before_extraction(self):
+        class FakeResponse:
+            def __init__(self):
+                self.requested = None
+            def read(self, size=-1):
+                self.requested = size
+                return b"x" * size
+        response = FakeResponse()
+        with self.assertRaises(ValueError):
+            agent.read_bounded_log_response(response)
+        self.assertEqual(response.requested, agent.MAX_LOG_ARCHIVE_BYTES + 1)
+
 
     def test_log_archive_extracts_only_text_logs(self):
         buffer = BytesIO()
