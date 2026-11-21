@@ -175,3 +175,49 @@ Gate:
 - Stable / production status: **NOT APPROVED**.
 
 This report records static-source observations only. It is not a penetration-test certificate, a proof of secure operation, or a claim of live connectivity.
+
+
+## 10. Additional DNS-client and transport findings (second-pass review)
+
+The following findings were added after inspecting the upstream Go DNS listener, client dispatch path, DNS response reassembly, server DNS resolver path, SOCKS5 upstream, and packet parser. This remains static source review; no fuzzing, race detector, build, or live network test was run.
+
+### F-DNS-03 — CRITICAL: DNS cache misses have no visible response path to the original local UDP requester
+- `DNSListener.handleQuery` invokes `Client.ProcessDNSQuery` with a callback that writes to the local UDP socket.
+- `ProcessDNSQuery` invokes that callback only for a ready local-cache hit. On a cache miss it dispatches the query into the tunnel and returns without retaining the original peer address or response callback.
+- `HandleDNSQueryRes` reassembles the tunneled response and stores it in the local cache, but the inspected implementation does not correlate that response to the original UDP requester or invoke its callback.
+- Consequence: a first-time DNS lookup appears not to receive its answer; a later retry may hit the cache. This is a protocol-correctness blocker unless another separately verified response path exists outside the inspected call chain.
+
+Gate: add request-ID/transaction correlation with bounded pending entries, deadlines, cancellation, and exact peer/callback delivery. Tests must prove first-query success, concurrent identical queries, transaction-ID preservation, timeout, duplicate response, late response, and cache-hit behavior.
+
+### F-DNS-04 — HIGH: unbounded goroutine creation on local DNS ingress and stop/write race
+- `DNSListener.Start` starts one goroutine per received UDP datagram with no visible semaphore, bounded worker queue, or per-peer admission limit.
+- `DNSListener.Stop` closes the socket and sets `l.conn = nil`; the read loop and asynchronous response callbacks access `l.conn`. The inspected code has no synchronization around that pointer, creating a potential data race / nil dereference during stop or in-flight responses.
+- The handler receives a context parameter but the inspected `ProcessDNSQuery` dispatch path does not use it to cancel a pending request.
+
+Gate: use a bounded worker/queue or explicit concurrency limiter; synchronize listener state; capture a stable socket handle for callbacks; wait for in-flight handlers on shutdown; add race-detector tests for stop-under-load, socket-close, callback-after-stop, overload, and cancellation.
+
+### F-DNS-05 — HIGH: local DNS request failure semantics are ambiguous
+- On malformed DNS input or an unready session, the current path returns without a DNS error response. On cache misses, it also returns immediately while tunnel dispatch is asynchronous.
+- This can cause resolver timeouts and retries rather than a deterministic SERVFAIL/REFUSED response, and increases load during outages.
+
+Gate: define explicit response semantics for malformed input, no session, queue saturation, timeout, and upstream failure; test DNS transaction IDs and response flags for each case.
+
+### F-PROTO-01 — HIGH: packet header check is not cryptographic integrity
+- The VPN packet parser validates a short custom header-check byte derived from header bytes. This is useful for accidental corruption detection only; it is not a MAC and cannot authenticate a packet.
+- Payload AEAD, where enabled, must be mandatory and must bind the complete packet header/metadata as associated data. The inspected AES-GCM calls use a nil associated-data argument, so header/session/stream metadata is not cryptographically bound by this codec layer.
+
+Gate: version the protocol and authenticate header plus payload together; add tamper tests for session ID, packet type, stream ID, sequence, fragment metadata, compression metadata, and ciphertext. Reject legacy unauthenticated modes.
+
+### F-SOCKS-01 — HIGH: target validation does not visibly protect against DNS rebinding/private-address resolution
+- `validateSOCKSTargetHost` rejects literal localhost/private/link-local/reserved IP addresses, but returns success for ordinary hostnames without resolving and validating all resulting A/AAAA addresses.
+- A hostname resolving to loopback, private, link-local, or metadata-service addresses may therefore bypass the literal-IP checks unless another later layer enforces an equivalent policy.
+
+Gate: resolve through a controlled resolver, validate every returned A/AAAA address against an explicit egress policy immediately before dialing, pin the validated result to the connection attempt, and test rebinding, mixed public/private answers, IPv4-mapped IPv6, IPv6 ULA/link-local, and metadata ranges.
+
+### F-RESOURCE-01 — HIGH: DNS hedging can fan out upstream work
+- When multiple upstream resolvers are configured, the DNS resolver launches concurrent goroutines for the primary and then all remaining resolvers after the hedge delay or early failure. The reviewed function has a timeout for the caller but does not visibly cancel already launched resolver operations when one response wins.
+- This may leave bounded-by-resolver-count background work running until per-query timeouts. Under high request volume, resource use can multiply.
+
+Gate: pass a cancellable context through every upstream query, cancel losing attempts immediately, cap resolver count and concurrent DNS lookups, and test cancellation/resource bounds under load.
+
+These findings strengthen the existing **NO-GO** decision. They are not evidence of a confirmed exploit or runtime failure; they are source-level correctness/security risks requiring targeted tests and remediation.
