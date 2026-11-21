@@ -144,6 +144,27 @@ class BugFixAgentClassificationTests(unittest.TestCase):
             self.assertNotIn(secret, result)
         self.assertEqual(result.count("[REDACTED]"), 5)
 
+    def test_github_api_response_is_bounded(self):
+        class FakeResponse:
+            def __init__(self):
+                self.requested = None
+            def read(self, size=-1):
+                self.requested = size
+                return b"x" * size
+        response = FakeResponse()
+        with self.assertRaises(ValueError):
+            agent.read_bounded_api_response(response)
+        self.assertEqual(response.requested, agent.MAX_API_RESPONSE_BYTES + 1)
+
+    def test_http_error_summary_is_bounded_and_redacted(self):
+        from urllib.error import HTTPError
+        from io import BytesIO
+        body = b'{"message":"token=super-secret"}'
+        error = HTTPError("https://api.github.com", 403, "Forbidden", {}, BytesIO(body))
+        summary = agent.http_error_summary(error)
+        self.assertNotIn("super-secret", summary)
+        self.assertIn("[REDACTED]", summary)
+
     def test_log_download_response_is_bounded_before_extraction(self):
         class FakeResponse:
             def __init__(self):
