@@ -10,6 +10,7 @@ from __future__ import annotations
 import json, os, re, sys, urllib.error, urllib.request, zipfile
 from io import BytesIO
 from typing import Any
+from urllib.parse import urlparse
 
 API = os.environ.get("GITHUB_API_URL", "https://api.github.com").rstrip("/")
 REPO = os.environ["GITHUB_REPOSITORY"]
@@ -47,6 +48,14 @@ def api(method: str, path: str, body: dict[str, Any] | None = None) -> Any:
         raw = response.read()
         return json.loads(raw) if raw else None
 
+class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if redirected and urlparse(newurl).netloc != urlparse(req.full_url).netloc:
+            redirected.remove_header("Authorization")
+        return redirected
+
+
 def download_job_log(job_id: int) -> str:
     req = urllib.request.Request(
         f"{API}/repos/{REPO}/actions/jobs/{job_id}/logs",
@@ -54,7 +63,8 @@ def download_job_log(job_id: int) -> str:
                  "Accept": "application/vnd.github+json",
                  "User-Agent": "MolidoVPN-Autonomous-BugFix-Agent"},
     )
-    with urllib.request.urlopen(req, timeout=60) as response:
+    opener = urllib.request.build_opener(SafeRedirectHandler())
+    with opener.open(req, timeout=60) as response:
         archive = response.read()
     with zipfile.ZipFile(BytesIO(archive)) as zipped:
         return "\n".join(
@@ -62,6 +72,18 @@ def download_job_log(job_id: int) -> str:
             for name in zipped.namelist()
             if name.lower().endswith((".txt", ".log"))
         )
+
+
+def redact_secrets(text: str) -> str:
+    text = re.sub(r"-----BEGIN [^-]*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----",
+                  "[REDACTED PRIVATE KEY]", text, flags=re.DOTALL)
+    text = re.sub(r"(?i)\b(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b",
+                  "[REDACTED TOKEN]", text)
+    text = re.sub(r"(?i)(authorization\s*[:=]\s*bearer\s+)\S+",
+                  r"\1[REDACTED]", text)
+    text = re.sub(r"(?i)\b(password|passwd|token|secret|api[_-]?key|keystore[_-]?(password|base64))\b(\s*[:=]\s*)\S+",
+                  r"\1\3[REDACTED]", text)
+    return text
 
 def classify_log(log: str) -> str:
     if CODE_FAILURE.search(log):
@@ -117,7 +139,7 @@ def main() -> int:
         reports.append({
             "id": job["id"], "name": job.get("name", "unnamed job"),
             "url": job.get("html_url", ""), "classification": classification,
-            "excerpt": excerpt,
+            "excerpt": redact_secrets(excerpt),
         })
     all_transient = all(r["classification"] == "transient_infrastructure" for r in reports)
     if all_transient and RUN_ATTEMPT < 2:
