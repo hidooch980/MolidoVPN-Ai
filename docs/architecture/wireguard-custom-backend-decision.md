@@ -20,6 +20,12 @@ A second upstream check identified the source tag that exactly matches the curre
 - The pinned upstream tree contains the same two native submodule gitlinks recorded below: `wireguard-tools` at `e2ecaaa739144997ccff89d6ad6ec81698ea6ced` and `elf-cleaner` at `7efc05090675ec6161b7def862728086a26c3b1f`.
 - Upstream `libwg-go` declares Go `1.23.1`; its Go module dependencies are pinned in the upstream `go.mod` / `go.sum`.
 
+The source build offers a potential way to avoid shipping the GPL native command-line tools, subject to a reproducible proof:
+- `GoBackend` loads `wg-go` and calls the Go native API; its current implementation creates the TUN through its own service.
+- `WgQuickBackend` uses `ToolsInstaller` and the `wg` / `wg-quick` executables. Molido's registered adapter currently uses `GoBackend`, not `WgQuickBackend`.
+- Upstream CMake declares `libwg-go.so`, `libwg.so`, and `libwg-quick.so`, and builds the latter two from the GPL-2 `wireguard-tools` submodule; `elf-cleaner` is used as a post-build helper for those two outputs.
+- A narrow Molido fork may be able to build/package only `libwg-go.so`, while retaining parser/backend Java code and omitting the CLI binaries, GPL submodule and ELF-cleaner. This must be demonstrated by a clean multi-ABI build, APK/AAB native-library inventory, dependency/license scan, and tests proving no app path invokes `WgQuickBackend` or expects the omitted binaries. Do not assume the legal concern is resolved until that evidence and a qualified license review exist.
+
 This exact-version tag is the correct source baseline to review first; it is not yet integrated. Toolchain compatibility is a material migration item: this upstream source uses AGP `8.13.2`, Kotlin `2.3.0`, and a Gradle wrapper distribution `9.1.0`; the Molido app currently uses AGP `8.10.1`, Kotlin `2.2.21`, and Gradle `8.11.1`. Do not copy upstream Gradle files wholesale or upgrade the app toolchain without a compatibility change plan and full CI validation.
 
 ## Upstream provenance and API review (2026-11-21)
