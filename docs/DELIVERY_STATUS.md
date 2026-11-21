@@ -2,24 +2,30 @@
 
 Branch under active review: `feature/wireguard-runtime-diagnostics`
 Base: `development/molido-vpn-ai-from-scratch`
-Latest workflow correction: `169fa6ffd9deab0070c19f8ba61b5eb1e3f511ba`
+Latest branch head at this status update: `0affc855ae78717a93757e6dff3098b9d1d4afcb`
 
 ## Release decision
 
-**Stable Production: BLOCKED.** CI #220 passed on its own commit, but no full CI result has yet been confirmed for the latest corrected PR head, but this is not proof of real VPN data-plane operation. The central app-owned TUN service, descriptor handoff, custom WireGuard backend, physical-device acceptance, production signing verification, and external engine gates remain incomplete. No Stable APK is approved or distributed.
+**Stable Production: BLOCKED.** No Stable APK is approved or distributed. The central app-owned TUN service, descriptor handoff, custom WireGuard backend, physical-device acceptance, production signing verification, and remaining engine/legal gates are incomplete.
 
-## Latest completed CI evidence — run #220 (not the latest PR head)
+## Latest CI evidence
 
-[Android CI #220](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44940225549), commit `4019b4f2666d1b870bb9b397f3dc18be030cf333`, completed successfully:
+- [Run #44942055091](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44942055091), commit `6f0b0cf20ed23bc2ed8fb69ff45991b18285bd6a`: Android source validation, backend tests, and Android Keystore emulator instrumentation all passed. Signed release was skipped for the pull-request event.
+- [Run #44944204445](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44944204445), commit `4fb11089a4cb6a78c01a15d4e0c484672f3ace5`: completed successfully on the first version of the manifest instrumentation test; the next commit only removed an unused import.
+- [Run #44944220579](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44944220579), commit `f0dfd741a0186ba1be0c3bc356f3b4a217772865`: backend and Android source validation passed, but emulator instrumentation failed before tests ran because Gradle could not resolve `org.jetbrains.kotlin:kotlin-reflect:2.0.20` and `org.jetbrains:annotations:13.0` from the configured repositories. This is a dependency-resolution failure, not evidence that the new manifest assertion failed.
+- Workflow commit `3e4611db278cf0a52b2c3c075a1e1e5d2e291e60` adds bounded retries **only** for recognizable repository/dependency transport failures. Compilation, assertion, install, and instrumentation failures remain hard failures.
+- Run [#44945055377](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44945055377) was executing on that workflow commit when this status was updated. Run [#44945289340](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/44945289340) was queued for current head `0affc855ae78717a93757e6dff3098b9d1d4afcb`. **CI is not yet confirmed green on the current branch head.**
 
-- Android source validation: success (unit tests, lint, release-variant assembly).
-- Backend tests: **13 passed**.
-- Android Keystore instrumentation: **15 tests started, 15 finished, BUILD SUCCESSFUL** on API 35 x86_64 emulator with KVM.
-- Signed-release job: **skipped**, as expected for a pull-request event.
+The added `SingleVpnServiceManifestTest` inspects the installed merged APK manifest and asserts exactly one service has `BIND_VPN_SERVICE`, currently the upstream `GoBackend$VpnService`. This is a regression guard only; it does not prove Molido owns TUN centrally.
 
-Run #220 passed after the KVM gate was added in commit `4019b4f`. A subsequent documentation commit was mistakenly created from a stale base tree and reverted that workflow change. The KVM gate and diagnostics were restored in commit `169fa6f`; the restored workflow has not yet been verified by a completed CI run. Run #221 was still executing against the intermediate commit `4206558` when this status was checked. Therefore CI is NOT yet confirmed green on the latest PR head. It does not resolve the central TUN ownership architecture or establish real-device connectivity. Earlier run #217's 0/0 instrumentation process crash remains historical evidence; run #220 passed the current instrumentation suite.
+## Recent architecture/provenance corrections
 
-Non-blocking warnings observed in CI:
+- `SINGLE_TUN_OWNER_MIGRATION.md` now accurately records that `SessionSupervisor` reserves the shared generation-scoped lease and passes it to WireGuard; the adapter validates it and does not independently acquire a second lease. Session and lease remain separate state ledgers, and the Android VPN service is still upstream-owned.
+- Official WireGuard tag `1.0.20260315` was inspected: annotated tag object `31ba2dbd3ac793f2e2bb386310d837bdc0cd0bfd` is reported by GitHub as PGP-signature verified and peels to `0856e2ecf7f3cce0e9c9014db3ad7665669adce5`. The peeled commit is not independently signed. This is newer than the currently consumed AAR `1.0.20260102`, so it is a candidate only, not an approved drop-in.
+- The upstream source review confirms the current backend calls `VpnService.Builder.establish()`, detaches the FD into private native `wgTurnOn(..., int tunFd, ...)`, and protects the resulting IPv4/IPv6 sockets through its own service. A supported public AAR API for injecting an externally owned TUN FD was not found.
+- The upstream source tree pins `wireguard-tools` (GPL-2) and `termux-elf-cleaner` (GPL-3.0-or-later). The latter is a build-time tool; the former is compiled into native outputs. The complete tunnel/native build must not be described as Apache-2.0-only. Legal/distribution compatibility review is required before integrating or redistributing a source-built backend.
+
+Non-blocking warnings previously observed in CI:
 - Deprecated Android system UI APIs in `MainActivity.kt`.
 - Unchecked `SpinnerAdapter` to `ArrayAdapter<String>` cast.
 - Native WireGuard libraries could not be stripped and were packaged unchanged.
@@ -64,7 +70,7 @@ Only WireGuard is registered in the runtime capability catalog. A registered sou
 
 The app manifest still receives `GoBackend.VpnService` from `com.wireguard.android:tunnel:1.0.20260102`. The app does not yet declare its own central `MolidoVpnService`. The current `TunOwnershipCoordinator` is an in-process lease/state coordinator, not an Android VPN service or FD broker. `NativeEngineProcessService` is status-only process-isolation scaffolding: it does not receive an FD, start a native engine, or acknowledge descriptor closure.
 
-The session supervisor and TUN coordinator are still separate state machines. Do not add a second VPN service or use reflection/private JNI hooks. Follow the reviewed migration decision: pin and verify official WireGuard source provenance/signature/submodules, build a narrow Apache-2.0-compliant local backend that accepts a central-service FD, then migrate manifest ownership and add authenticated versioned Binder/ParcelFileDescriptor IPC.
+The session supervisor and TUN coordinator are separate state machines but share one coordinator instance; the supervisor reserves the lease and WireGuard validates the exact token. The coordinator is not an Android VPN service or FD broker. Do not add a second VPN service or use reflection/private JNI hooks. Follow the reviewed migration decision: finish the pinned-source, submodule and license review; resolve distribution compatibility; then build a source-based backend that accepts a central-service FD and explicit socket-protection callback, migrate manifest ownership, and add authenticated versioned Binder/ParcelFileDescriptor IPC.
 
 ## Physical device and network acceptance
 
@@ -82,7 +88,7 @@ No VPN server/VPS is assumed or requested as a current development dependency. R
 
 - PR CI release assembly is unsigned/CI validation only; signed-release job is skipped on pull requests.
 - Permanent owner-controlled signing identity and matching APK certificate fingerprint have not been verified by a successful signed-release workflow on the approved base branch.
-- No APK from CI #220 is a Stable Production deliverable.
+- No APK from any pull-request CI run is a Stable Production deliverable.
 - Do not rotate or replace an established signing identity without explicit authorization and backup.
 
 ## Current PR state
