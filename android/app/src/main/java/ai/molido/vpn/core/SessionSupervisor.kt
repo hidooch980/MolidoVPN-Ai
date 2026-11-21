@@ -122,12 +122,22 @@ class SessionSupervisor(
         val coordinator = tunOwnership
         val lease = activeLease
         if (coordinator != null) {
-            if (lease == null || !coordinator.isReserved(lease)) return false
-            val released = when (lease.transport) {
-                TunLeaseTransport.BACKEND_MANAGED ->
-                    coordinator.beginStop(lease) && coordinator.confirmBackendStopped(lease)
-                TunLeaseTransport.DESCRIPTOR_HANDOFF ->
-                    coordinator.confirmServiceTunClosed(lease)
+            if (lease == null) return false
+            val snapshot = coordinator.snapshot()
+            val alreadyCleanedByAdapter =
+                snapshot.owner == null &&
+                snapshot.state == TunLeaseState.IDLE &&
+                snapshot.generation == lease.generation
+            val released = if (alreadyCleanedByAdapter) {
+                true
+            } else {
+                if (!coordinator.isReserved(lease)) return false
+                when (lease.transport) {
+                    TunLeaseTransport.BACKEND_MANAGED ->
+                        coordinator.beginStop(lease) && coordinator.confirmBackendStopped(lease)
+                    TunLeaseTransport.DESCRIPTOR_HANDOFF ->
+                        coordinator.confirmServiceTunClosed(lease)
+                }
             }
             if (!released) return false
         }
