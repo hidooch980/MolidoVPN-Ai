@@ -101,8 +101,6 @@ jobs:
     timeout-minutes: 55
     env:
       ANDROID_EMULATOR_WAIT_TIME_BEFORE_KILL: "60"
-      # GitHub-hosted runners may not expose KVM; explicitly allow QEMU TCG.
-      ANDROID_I_WANT_MY_TCG: "yes"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -156,9 +154,11 @@ jobs:
             find "${ANDROID_HOME:-/usr/local/lib/android/sdk}" -maxdepth 3 -type f -name emulator -print || true
             exit 1
           fi
+          # Prefer host acceleration when the runner exposes it; auto avoids
+          # forcing the extremely slow TCG path on runners with KVM available.
           nohup "$EMULATOR_BIN" -avd molido-ci-api35 \
             -no-window -gpu swiftshader_indirect -no-snapshot -noaudio \
-            -no-boot-anim -camera-back none -no-metrics -accel off \
+            -no-boot-anim -camera-back none -no-metrics -accel auto \
             > "$RUNNER_TEMP/molido-emulator.log" 2>&1 &
           emulator_pid=$!
           echo "$emulator_pid" > "$RUNNER_TEMP/molido-emulator.pid"
@@ -197,6 +197,25 @@ jobs:
           fi
           timeout 15s adb shell getprop ro.build.version.sdk
           timeout 15s adb shell getprop sys.boot_completed
+
+          # sys.boot_completed can become 1 before system_server has published
+          # PackageManager. Do not start connected tests until package install works.
+          package_manager_ready=0
+          for attempt in $(seq 1 180); do
+            if timeout 10s adb shell pm list packages >/dev/null 2>&1; then
+              package_manager_ready=1
+              break
+            fi
+            echo "Waiting for Android PackageManager readiness: ${attempt}/180."
+            sleep 2
+          done
+          if [ "$package_manager_ready" -ne 1 ]; then
+            echo "Android boot completed, but PackageManager never became available."
+            adb shell service list || true
+            adb logcat -d -t 800 || true
+            tail -n 300 "$RUNNER_TEMP/molido-emulator.log" || true
+            exit 1
+          fi
           adb devices -l
       - name: Run Android Keystore instrumentation tests
         shell: bash
