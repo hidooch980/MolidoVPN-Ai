@@ -62,3 +62,26 @@ Status: provider integration plan only. No provider is enabled, enrolled, authen
 - Proton's official support flow requires signing in to generate/download a WireGuard configuration. Free plan configuration options are more limited than paid plans.
 - Tor's Android VPN mode is a Tor routing mode, not a WireGuard server. Tor-powered apps may be excluded from routing through Tor VPN to avoid loops.
 - Psiphon provides its own Android VPNService-based app; integration into this app requires a separately verified supported integration approach.
+
+## Research-only candidate: MasterDnsVPN (DNS tunnel)
+
+Decision: **Approved for source/security evaluation only; runtime integration and connection remain DISABLED.**
+
+Why it is the strongest candidate among GooseRelayVPN, Skirk, and MasterDnsVPN:
+- The upstream core is Go-based and MIT-licensed, making source-level review and a controlled build technically feasible.
+- A separate community Android client exists, but it is not the upstream project's official Android application.
+- The transport carries TCP through DNS queries and responses; it is an experimental fallback transport, not a free public VPN or an exit service.
+
+Hard blockers:
+- It requires an operator-controlled reachable server, a delegated tunnel subdomain (A + NS records), a matching encryption key, and working DNS resolvers. The Android community client README explicitly requires an operational MasterDnsVPN server before connecting.
+- It therefore cannot be made operational under the current GitHub-only/no-server/no-domain constraint. No server, domain, resolver, public IP, or connection status may be fabricated.
+- DNS tunneling can have high latency, limited throughput, resolver-dependent reliability, and detectable unusual DNS patterns. It must not be marketed as equivalent to WireGuard or a guaranteed censorship bypass.
+- The upstream core and community Android wrapper require separate source, dependency, license, signing, privacy, and supply-chain audits before any code reuse.
+
+Architecture decision:
+- Do NOT add a seventh engine slot.
+- Do NOT mislabel MasterDnsVPN as WireGuard, Xray, Tor, or MASQUE/WARP; it is a distinct DNS-tunnel protocol and cannot honestly be represented as one of those engines.
+- Do NOT register an EngineAdapter, expose a Connect action, add a selectable profile, or start a second VPNService/TUN owner.
+- Keep this entry as an active research item only. Reconsider implementation only after an explicit architecture decision resolves the six-engine constraint and a lawful, user-authorized server/domain endpoint is available. Any future prototype must use the existing single-TUN supervisor and pass unit, security, Android instrumentation, and physical-device tests before it can be enabled.
+
+Current status: **Research approved; source audit pending; runtime disabled; no connection tested; not production-ready.**
