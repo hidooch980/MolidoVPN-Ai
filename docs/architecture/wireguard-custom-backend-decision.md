@@ -10,6 +10,23 @@ Build a pinned, source-based Molido WireGuard backend from the official WireGuar
 
 Do not keep the published `com.wireguard.android:tunnel` AAR as an operational dependency after migration. Do not add a second VPN service beside its merged `GoBackend.VpnService`. Do not use reflection, private API mutation, or raw integer file-descriptor transfer.
 
+## Upstream provenance and API review (2026-11-21)
+
+The official upstream GitHub API was inspected for candidate tag `1.0.20260315`:
+
+- Annotated tag object: `31ba2dbd3ac793f2e2bb386310d837bdc0cd0bfd`.
+- Peeled commit: `0856e2ecf7f3cce0e9c9014db3ad7665669adce5`.
+- GitHub reports the annotated tag signature as **verified: true** (valid PGP signature; tagger Jason A. Donenfeld; verified 2026-03-15).
+- The peeled commit itself is reported unsigned. The verified signed tag authenticates the tag-to-commit reference; do not describe the commit object as independently signed.
+- The currently consumed Maven AAR is `1.0.20260102`, so candidate source tag `1.0.20260315` is a newer upstream revision and is **not yet approved as a drop-in replacement**. Review intervening source, native toolchain, submodule revisions, and dependency/license changes before selecting it.
+
+The candidate `GoBackend.java` confirms the integration boundary:
+- `wgTurnOn(String ifName, int tunFd, String settings)` is a private native method.
+- The current UP path builds the TUN with `VpnService.Builder.establish()`, detaches its descriptor into `wgTurnOn`, then calls `service.protect()` for the WireGuard IPv4 and IPv6 sockets.
+- The public backend API does not expose caller-supplied TUN FD injection. A Molido-owned service therefore requires a source-level, reviewed backend/JNI change and an explicit socket-protection callback/path; it cannot be achieved by merely passing a descriptor to the existing AAR API.
+
+No upstream source, dependency, manifest, or runtime code was changed by this provenance/API review.
+
 ## Why this path
 
 The currently pinned AAR's `GoBackend.setStateInternal(UP)` starts its nested `GoBackend.VpnService`, calls `VpnService.Builder.establish()`, detaches that descriptor, and passes it to the native `wgTurnOn` entry point. The AAR manifest contributes that nested class as an Android VPN service. The supported public API does not accept a descriptor established by an external service.
