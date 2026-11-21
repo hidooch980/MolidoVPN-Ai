@@ -12,7 +12,12 @@ This is the master execution tracker. It distinguishes work that exists in sourc
 - [x] Psiphon remains blocked pending GPL-3.0 compliance or written commercial exception.
 - [x] MASQUE/WARP remains blocked pending a documented supported public embedding path and terms.
 - [x] Physical-device and native-engine acceptance procedures are documented.
-- [ ] Full CI green on the current PR head. Previous run 178 failed because of a malformed literal newline in the Android Keystore instrumentation test; the source typo was corrected in commit `c318c4b54736a9086c59f67cfa98cd2e3de6db93`; run 179 is the verification run.
+- [ ] Full CI green on the current PR head. On 2026-11-21, run 211 (commit `7898dc3b1123529c2b50ffa55e3804b69344a47e`) passed backend tests, Android unit tests, lint, and release assembly, but its Android Keystore instrumentation job failed because the emulator reported `Can't find service: package` during APK installation after a very slow TCG boot. This is an emulator/system-service failure; instrumentation test assertions did not complete.
+- [x] CI emulator workflow hardened in commit `132fb0ee64e4039a01f824c2f0a569c3eb9359e8`: prefer host acceleration (`-accel auto`) rather than forcing TCG, and wait for PackageManager readiness before running connected tests.
+- [ ] Verification of that workflow fix is pending: run 217 on prior commit `cc08e758b73cc3e13dfa8b2d42f654b157156960` is still running; run 218 on the updated commit `132fb0ee64e4039a01f824c2f0a569c3eb9359e8` is queued.
+- [ ] Real Android phone acceptance evidence recorded.
+- [ ] Compatible WireGuard server/provider deployment and endpoint tested.
+- [ ] Signed release artifact built and signature fingerprint verified on the protected development branch.
 - [ ] Real Android phone acceptance evidence recorded.
 - [ ] Compatible WireGuard server/provider deployment and endpoint tested.
 - [ ] Signed release artifact built and signature fingerprint verified on the protected development branch.
