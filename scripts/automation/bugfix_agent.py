@@ -140,8 +140,8 @@ def redact_secrets(text: str) -> str:
     text = re.sub(
         r"(?i)([?&](?:access_token|refresh_token|token|api_key|password|secret|"
         r"x-amz-(?:credential|signature|security-token)|"
-        r"x-goog-(?:credential|signature)|sig|signature)=)[^&\\s]+",
-        r"\\1[REDACTED]", text,
+        r"x-goog-(?:credential|signature)|sig|signature)=)[^&\s]+",
+        r"\1[REDACTED]", text,
     )
     text = re.sub(r"(?i)\b(AKIA[0-9A-Z]{16})\b", "[REDACTED AWS KEY]", text)
     return text
