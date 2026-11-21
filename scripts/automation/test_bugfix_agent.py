@@ -255,8 +255,9 @@ class BugFixAgentClassificationTests(unittest.TestCase):
         self.assertEqual(captured["timeout"], 45)
 
     def test_generic_exception_detail_is_redacted(self):
-        detail = agent.redact_secrets("token=top-secret")
+        detail = agent.safe_exception_summary(RuntimeError("token=top-secret"))
         self.assertNotIn("top-secret", detail)
+        self.assertIn("RuntimeError", detail)
 
     def test_https_downgrade_redirect_drops_authorization(self):
         request = Request("https://api.github.com/logs")
