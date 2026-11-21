@@ -339,4 +339,66 @@ class VpnSessionControllerTest {
         assertEquals(SessionState.IDLE, controller.snapshot().state)
         assertNull(supervisor.currentOwner())
     }
+
+    @Test
+    fun controllerPassesTheSupervisorLeaseToWireGuardAndReleasesItAfterConfirmedStop() {
+        val coordinator = TunOwnershipCoordinator()
+        val supervisor = SessionSupervisor(coordinator)
+        var receivedLease: TunLeaseToken? = null
+        val adapter = object : TunLeaseAwareEngineAdapter {
+            override val slot = EngineSlot.WIREGUARD
+
+            override fun start(configuration: String, lease: TunLeaseToken): EngineSession {
+                receivedLease = lease
+                assertTrue(coordinator.isReserved(lease))
+                assertTrue(coordinator.markBackendActive(lease))
+                return object : EngineSession {
+                    override fun stop() {
+                        assertTrue(coordinator.beginStop(lease))
+                        assertTrue(coordinator.confirmBackendStopped(lease))
+                    }
+                }
+            }
+        }
+        val controller = VpnSessionController(supervisor, listOf(adapter))
+
+        assertTrue(controller.connect(EngineSlot.WIREGUARD, "opaque-test-profile"))
+        assertNotNull(receivedLease)
+        assertEquals(EngineSlot.WIREGUARD, coordinator.snapshot().owner)
+        assertEquals(TunLeaseState.ACTIVE, coordinator.snapshot().state)
+        assertTrue(controller.disconnect())
+        assertEquals(TunLeaseState.IDLE, coordinator.snapshot().state)
+        assertEquals(SessionState.IDLE, controller.snapshot().state)
+        assertNull(supervisor.currentOwner())
+    }
+
+    @Test
+    fun sharedCoordinatorRejectsSecondSessionWhileFirstLeaseIsHeld() {
+        val coordinator = TunOwnershipCoordinator()
+        val firstSupervisor = SessionSupervisor(coordinator)
+        val secondSupervisor = SessionSupervisor(coordinator)
+        val firstAdapter = object : TunLeaseAwareEngineAdapter {
+            override val slot = EngineSlot.WIREGUARD
+            override fun start(configuration: String, lease: TunLeaseToken): EngineSession {
+                assertTrue(coordinator.markBackendActive(lease))
+                return object : EngineSession {
+                    override fun stop() {
+                        assertTrue(coordinator.beginStop(lease))
+                        assertTrue(coordinator.confirmBackendStopped(lease))
+                    }
+                }
+            }
+        }
+        val firstController = VpnSessionController(firstSupervisor, listOf(firstAdapter))
+        val secondAdapter = FakeAdapter(EngineSlot.TOR)
+        val secondController = VpnSessionController(secondSupervisor, listOf(secondAdapter))
+
+        assertTrue(firstController.connect(EngineSlot.WIREGUARD, "first"))
+        assertFalse(secondController.connect(EngineSlot.TOR, "must-not-overlap"))
+        assertEquals(0, secondAdapter.startCalls)
+        assertEquals(EngineSlot.WIREGUARD, coordinator.snapshot().owner)
+        assertTrue(firstController.disconnect())
+        assertEquals(TunLeaseState.IDLE, coordinator.snapshot().state)
+    }
+
 }
