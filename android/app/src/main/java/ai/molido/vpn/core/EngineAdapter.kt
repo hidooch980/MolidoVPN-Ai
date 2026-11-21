@@ -23,7 +23,9 @@ interface EngineSession {
 class EngineStartException(
     message: String,
     val cleanupSession: EngineSession?,
-    cause: Throwable
+    cause: Throwable,
+    /** True only when the adapter has positively confirmed that startup resources are down. */
+    val cleanupConfirmed: Boolean = false
 ) : Exception(message, cause)
 
 
