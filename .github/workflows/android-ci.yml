@@ -142,7 +142,24 @@ jobs:
           test -s "$ANDROID_AVD_HOME/molido-ci-api35.ini"
           test -d "$ANDROID_AVD_HOME/molido-ci-api35.avd"
           avdmanager list avd
-      - name: Boot emulator with software acceleration
+      - name: Grant runner access to hardware virtualization
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -e /dev/kvm ]; then
+            echo "This runner does not expose /dev/kvm; x86_64 Android Emulator instrumentation cannot run here."
+            exit 1
+          fi
+          sudo chmod 0666 /dev/kvm
+          if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+            echo "The runner still cannot access /dev/kvm after permission setup."
+            ls -l /dev/kvm || true
+            id
+            exit 1
+          fi
+          ls -l /dev/kvm
+          id
+      - name: Boot emulator with hardware acceleration
         shell: bash
         timeout-minutes: 20
         run: |
@@ -154,11 +171,11 @@ jobs:
             find "${ANDROID_HOME:-/usr/local/lib/android/sdk}" -maxdepth 3 -type f -name emulator -print || true
             exit 1
           fi
-          # Prefer host acceleration when the runner exposes it; auto avoids
-          # forcing the extremely slow TCG path on runners with KVM available.
+          # KVM access is checked and granted in the preceding step. Require hardware
+          # acceleration so CI fails fast instead of attempting unsupported TCG.
           nohup "$EMULATOR_BIN" -avd molido-ci-api35 \
             -no-window -gpu swiftshader_indirect -no-snapshot -noaudio \
-            -no-boot-anim -camera-back none -no-metrics -accel auto \
+            -no-boot-anim -camera-back none -no-metrics -accel on \
             > "$RUNNER_TEMP/molido-emulator.log" 2>&1 &
           emulator_pid=$!
           echo "$emulator_pid" > "$RUNNER_TEMP/molido-emulator.pid"
@@ -231,7 +248,9 @@ jobs:
           echo "=== ADB devices (15s limit) ==="
           timeout 15s adb devices -l || true
           echo "=== Android logcat (45s limit) ==="
-          timeout 45s adb logcat -d -t 1200 || true
+          timeout 45s adb logcat -b all -d -v threadtime -t 4000 || true
+          echo "=== Emulator crash and instrumentation markers ==="
+          timeout 20s adb logcat -b all -d -v threadtime -t 8000 2>/dev/null | grep -E "FATAL EXCEPTION|Fatal signal|am_crash|AndroidRuntime|INSTRUMENTATION_(STATUS|RESULT)|Process .* has died|keystore|Keystore" | tail -n 300 || true
           echo "=== Emulator process log ==="
           if [ -f "$RUNNER_TEMP/molido-emulator.log" ]; then
             tail -n 300 "$RUNNER_TEMP/molido-emulator.log"
