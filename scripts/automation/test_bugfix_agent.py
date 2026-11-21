@@ -100,5 +100,17 @@ class BugFixAgentClassificationTests(unittest.TestCase):
         self.assertFalse(agent.should_retry_failed_jobs([], 1))
 
 
+    def test_url_credentials_and_query_tokens_are_redacted(self):
+        sample = "https://user:pass@example.test/path?access_token=secret-value&x=1"
+        result = agent.redact_secrets(sample)
+        self.assertNotIn("pass@", result)
+        self.assertNotIn("secret-value", result)
+
+    def test_aws_access_key_is_redacted(self):
+        result = agent.redact_secrets("AWS_ACCESS_KEY_ID=AKIA1234567890ABCDEF")
+        self.assertNotIn("AKIA1234567890ABCDEF", result)
+        self.assertIn("[REDACTED AWS KEY]", result)
+
+
 if __name__ == "__main__":
     unittest.main()
