@@ -90,6 +90,8 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - name: Install backend test dependencies
         run: python -m pip install -r backend/requirements.txt
+      - name: Test autonomous bug-fix agent classification
+        run: python -m unittest scripts/automation/test_bugfix_agent.py -v
       - name: Run backend tests
         env:
           PYTHONPATH: .
