@@ -16,6 +16,13 @@
 - Unknown, mixed, compilation, assertion, instrumentation, and security failures are not automatically retried as transient infrastructure.
 
 ## Verification
-- Bug-fix agent and patch-policy tests: `python -m unittest scripts/automation/test_bugfix_agent.py -v` (42 tests are now defined; the newest regression tests cover pre-extraction network read limits, signed cloud-URL secret redaction, bounded GitHub API reads, and redacted HTTP error summaries. The newest two tests require a fresh CI run).
+- Bug-fix agent and patch-policy tests: `python -m unittest scripts/automation/test_bugfix_agent.py -v` (44 tests are now defined; the newest regression tests cover pre-extraction network read limits, signed cloud-URL secret redaction, bounded GitHub API reads, redacted HTTP error summaries, safe redirect handling for API calls, and generic exception redaction. The newest four tests require a fresh CI run).
 - Patch policy tests are included in the same test module.
 - Workflow: `.github/workflows/android-ci.yml`
+
+
+### Additional redirect hardening (latest source change)
+
+- GitHub API calls now use the same redirect policy as log downloads: Authorization is removed on cross-host, cross-port, or HTTPS-downgrade redirects.
+- Unexpected top-level exception details are redacted and truncated before they are written to CI logs.
+- Two new regression tests cover the API opener policy and generic error-detail redaction. The expanded suite now defines 44 tests; the latest changes require a fresh CI run.
