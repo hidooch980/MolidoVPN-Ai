@@ -2,7 +2,7 @@
 
 Branch under active review: `feature/wireguard-runtime-diagnostics`
 Base: `development/molido-vpn-ai-from-scratch`
-Latest branch head at this status update: `0affc855ae78717a93757e6dff3098b9d1d4afcb`
+Active branch: `feature/wireguard-runtime-diagnostics`
 
 ## Release decision
 
