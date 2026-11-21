@@ -44,7 +44,8 @@ def api(method: str, path: str, body: dict[str, Any] | None = None) -> Any:
         "Content-Type": "application/json",
         "User-Agent": "MolidoVPN-Autonomous-BugFix-Agent",
     })
-    with urllib.request.urlopen(req, timeout=45) as response:
+    opener = urllib.request.build_opener(SafeRedirectHandler())
+    with opener.open(req, timeout=45) as response:
         raw = read_bounded_api_response(response)
         return json.loads(raw) if raw else None
 
@@ -330,5 +331,6 @@ if __name__ == "__main__":
         print(f"BugFix Agent API error: HTTP {exc.code}: {http_error_summary(exc)}", file=sys.stderr)
         sys.exit(1)
     except Exception as exc:
-        print(f"BugFix Agent failed closed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        safe_detail = redact_secrets(str(exc))[:2000]
+        print(f"BugFix Agent failed closed: {type(exc).__name__}: {safe_detail}", file=sys.stderr)
         sys.exit(1)
