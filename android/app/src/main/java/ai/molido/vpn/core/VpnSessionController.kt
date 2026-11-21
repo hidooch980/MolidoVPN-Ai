@@ -96,8 +96,19 @@ class VpnSessionController(
                 activeSession = cleanupSession
                 activeOwner = slot
             } else if (supervisor.requiresTunLease()) {
-                check(supervisor.releaseUnstartedReservation(slot)) {
-                    "Startup failed without a session handle, but shared TUN reservation could not be safely released"
+                val cleanupConfirmed = (failure as? EngineStartException)?.cleanupConfirmed == true
+                if (cleanupConfirmed) {
+                    check(supervisor.releaseUnstartedReservation(
+                        slot,
+                        backendCleanupConfirmed = true
+                    )) {
+                        "Adapter reported cleanup, but shared TUN reservation release was not confirmed"
+                    }
+                } else {
+                    // No cleanup handle and no positive transport acknowledgement:
+                    // retain exclusive ownership rather than assume the TUN is down.
+                    activeOwner = slot
+                    record("STARTUP_CLEANUP_UNCONFIRMED", "Startup failed without cleanup proof; shared TUN ownership retained")
                 }
             } else {
                 supervisor.beginStopping(slot)
