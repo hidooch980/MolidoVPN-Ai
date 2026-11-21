@@ -81,5 +81,24 @@ class BugFixAgentClassificationTests(unittest.TestCase):
         self.assertIn("not established", result["diagnosis"])
 
 
+    def test_retry_allowed_for_all_transient_failures_on_first_attempt(self):
+        reports = [{"classification": "transient_infrastructure"}]
+        self.assertTrue(agent.should_retry_failed_jobs(reports, 1))
+
+    def test_retry_blocked_after_first_attempt(self):
+        reports = [{"classification": "transient_infrastructure"}]
+        self.assertFalse(agent.should_retry_failed_jobs(reports, 2))
+
+    def test_retry_blocked_for_mixed_or_unknown_failures(self):
+        mixed = [
+            {"classification": "transient_infrastructure"},
+            {"classification": "code_or_test_failure"},
+        ]
+        unknown = [{"classification": "unknown"}]
+        self.assertFalse(agent.should_retry_failed_jobs(mixed, 1))
+        self.assertFalse(agent.should_retry_failed_jobs(unknown, 1))
+        self.assertFalse(agent.should_retry_failed_jobs([], 1))
+
+
 if __name__ == "__main__":
     unittest.main()
