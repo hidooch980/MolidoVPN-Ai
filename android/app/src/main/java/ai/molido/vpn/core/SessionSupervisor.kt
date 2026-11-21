@@ -121,7 +121,10 @@ class SessionSupervisor(
      * only while the exact lease is still RESERVED; an activated/uncertain TUN is retained.
      */
     @Synchronized
-    fun releaseUnstartedReservation(engine: EngineSlot): Boolean {
+    fun releaseUnstartedReservation(
+        engine: EngineSlot,
+        backendCleanupConfirmed: Boolean = false
+    ): Boolean {
         if (activeEngine != engine || state != SessionState.FAILED) return false
         val coordinator = tunOwnership
         val lease = activeLease
@@ -138,7 +141,8 @@ class SessionSupervisor(
                 if (!coordinator.isReserved(lease)) return false
                 when (lease.transport) {
                     TunLeaseTransport.BACKEND_MANAGED ->
-                        coordinator.beginStop(lease) && coordinator.confirmBackendStopped(lease)
+                        backendCleanupConfirmed && coordinator.beginStop(lease) &&
+                            coordinator.confirmBackendStopped(lease)
                     TunLeaseTransport.DESCRIPTOR_HANDOFF ->
                         coordinator.confirmServiceTunClosed(lease)
                 }
