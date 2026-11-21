@@ -30,12 +30,16 @@ class SessionSupervisor(
     @Synchronized
     fun claim(engine: EngineSlot): Boolean {
         if (state != SessionState.IDLE) return false
-        val lease = tunOwnership?.let { coordinator ->
-            if (engine == EngineSlot.WIREGUARD) {
+        val lease = if (tunOwnership == null) {
+            null
+        } else {
+            val coordinator = tunOwnership
+            val acquired = if (engine == EngineSlot.WIREGUARD) {
                 coordinator.acquireBackendManaged(engine)
             } else {
                 coordinator.acquire(engine)
-            } ?: return false
+            }
+            acquired ?: return false
         }
         activeEngine = engine
         activeLease = lease
