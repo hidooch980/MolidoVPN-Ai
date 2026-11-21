@@ -98,3 +98,18 @@ This plan translates the expanded static audit into implementation and verificat
 ## Stop conditions
 
 Any unresolved critical/high security finding, license issue, inability to reproduce the AAR, TUN ownership ambiguity, descriptor cleanup uncertainty, unsupported traffic class misrepresented as supported, or missing external test prerequisites keeps this candidate blocked. Do not merge merely to make the status green.
+
+
+### F2. DNS request/response correlation and bounded lifecycle (added second-pass gate)
+- Repair the first-query response path: preserve a bounded pending-request record containing transaction identity, original local UDP peer, response callback/socket generation, deadline, and cancellation handle.
+- Match reassembled tunnel responses to exactly one pending requester; preserve/patch the DNS transaction ID safely and prevent late/duplicate responses from reaching a reused request slot.
+- Define deterministic SERVFAIL/REFUSED behavior for malformed queries, unavailable session, queue saturation, timeout, and upstream failure.
+- Replace one-goroutine-per-datagram ingress with bounded concurrency and backpressure; synchronize socket lifecycle, wait for in-flight handlers, and prevent callbacks after listener shutdown.
+- Acceptance: first uncached lookup succeeds on the first attempt; concurrent same-name queries each receive the correct transaction ID; stop-under-load and callback-after-stop pass Go race tests; overload and cancellation remain bounded.
+
+### F3. Authenticated packet metadata and SOCKS destination policy (added second-pass gate)
+- Do not treat the custom header check byte as packet authentication. Authenticate the complete packet header and payload together using a versioned AEAD scheme and associated data; reject legacy modes without downgrade.
+- Resolve SOCKS hostnames under a controlled policy and validate every A/AAAA result immediately before dialing; block loopback, private, link-local, ULA, multicast, unspecified, carrier-grade NAT, reserved, and metadata-service ranges as applicable.
+- Pin the validated resolution to the actual dial attempt to prevent DNS rebinding between validation and connection.
+- Cancel losing DNS hedge requests after a valid response, propagate context cancellation through resolver operations, and cap concurrent DNS work.
+- Acceptance: tamper tests for every header field, replay/downgrade tests, DNS-rebinding and mixed-answer tests, and load tests demonstrating bounded goroutines/sockets/memory.
