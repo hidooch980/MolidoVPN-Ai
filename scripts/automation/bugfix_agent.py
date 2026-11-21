@@ -83,6 +83,11 @@ def http_error_summary(exc: urllib.error.HTTPError) -> str:
     return redact_secrets(body)[:2000]
 
 
+def safe_exception_summary(exc: Exception) -> str:
+    """Return a bounded, redacted exception detail for CI logs."""
+    return f"{type(exc).__name__}: {redact_secrets(str(exc))[:2000]}"
+
+
 MAX_LOG_ARCHIVE_BYTES = 20 * 1024 * 1024
 MAX_LOG_FILES = 100
 MAX_LOG_MEMBER_BYTES = 2 * 1024 * 1024
@@ -331,6 +336,5 @@ if __name__ == "__main__":
         print(f"BugFix Agent API error: HTTP {exc.code}: {http_error_summary(exc)}", file=sys.stderr)
         sys.exit(1)
     except Exception as exc:
-        safe_detail = redact_secrets(str(exc))[:2000]
-        print(f"BugFix Agent failed closed: {type(exc).__name__}: {safe_detail}", file=sys.stderr)
+        print(f"BugFix Agent failed closed: {safe_exception_summary(exc)}", file=sys.stderr)
         sys.exit(1)
