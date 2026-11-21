@@ -10,6 +10,18 @@ Build a pinned, source-based Molido WireGuard backend from the official WireGuar
 
 Do not keep the published `com.wireguard.android:tunnel` AAR as an operational dependency after migration. Do not add a second VPN service beside its merged `GoBackend.VpnService`. Do not use reflection, private API mutation, or raw integer file-descriptor transfer.
 
+## Exact source baseline matching the current AAR
+
+A second upstream check identified the source tag that exactly matches the currently consumed AAR version:
+
+- Tag: `1.0.20260102`; annotated tag object `3831cab2da844319291459308a6e535d36dde4b3`.
+- Peeled commit: `09b75c2bd37f749e2a8c85876394854113c74be7`.
+- GitHub reports the annotated tag PGP signature as **verified: true** (tagger Jason A. Donenfeld; verified 2026-01-02). The peeled commit object is not independently signed.
+- The pinned upstream tree contains the same two native submodule gitlinks recorded below: `wireguard-tools` at `e2ecaaa739144997ccff89d6ad6ec81698ea6ced` and `elf-cleaner` at `7efc05090675ec6161b7def862728086a26c3b1f`.
+- Upstream `libwg-go` declares Go `1.23.1`; its Go module dependencies are pinned in the upstream `go.mod` / `go.sum`.
+
+This exact-version tag is the correct source baseline to review first; it is not yet integrated. Toolchain compatibility is a material migration item: this upstream source uses AGP `8.13.2`, Kotlin `2.3.0`, and a Gradle wrapper distribution `9.1.0`; the Molido app currently uses AGP `8.10.1`, Kotlin `2.2.21`, and Gradle `8.11.1`. Do not copy upstream Gradle files wholesale or upgrade the app toolchain without a compatibility change plan and full CI validation.
+
 ## Upstream provenance and API review (2026-11-21)
 
 The official upstream GitHub API was inspected for candidate tag `1.0.20260315`:
