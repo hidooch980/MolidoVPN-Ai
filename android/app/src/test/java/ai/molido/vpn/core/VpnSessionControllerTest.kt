@@ -390,12 +390,19 @@ class VpnSessionControllerTest {
             }
         }
         val firstController = VpnSessionController(firstSupervisor, listOf(firstAdapter))
-        val secondAdapter = FakeAdapter(EngineSlot.TOR)
+        var secondStartCalls = 0
+        val secondAdapter = object : TunLeaseAwareEngineAdapter {
+            override val slot = EngineSlot.TOR
+            override fun start(configuration: String, lease: TunLeaseToken): EngineSession {
+                secondStartCalls += 1
+                error("Competing engine must never start while the first lease is held")
+            }
+        }
         val secondController = VpnSessionController(secondSupervisor, listOf(secondAdapter))
 
         assertTrue(firstController.connect(EngineSlot.WIREGUARD, "first"))
         assertFalse(secondController.connect(EngineSlot.TOR, "must-not-overlap"))
-        assertEquals(0, secondAdapter.startCalls)
+        assertEquals(0, secondStartCalls)
         assertEquals(EngineSlot.WIREGUARD, coordinator.snapshot().owner)
         assertTrue(firstController.disconnect())
         assertEquals(TunLeaseState.IDLE, coordinator.snapshot().state)
