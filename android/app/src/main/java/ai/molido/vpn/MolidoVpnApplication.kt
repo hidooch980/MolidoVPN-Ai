@@ -86,7 +86,7 @@ class MolidoVpnApplication : Application() {
         val registeredAdapters = listOf(wireGuardAdapter)
         engineCapabilities = EngineCapabilityCatalog.build(registeredAdapters)
         vpnSessions = VpnSessionController(
-            supervisor = SessionSupervisor(),
+            supervisor = SessionSupervisor(tunOwnershipCoordinator),
             adapters = registeredAdapters,
             networkAssessmentProvider = { latestNetworkAssessment() },
             networkPolicyProvider = { selectedNetworkPolicy.get() },
