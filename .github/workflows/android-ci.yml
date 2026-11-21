@@ -101,6 +101,8 @@ jobs:
     timeout-minutes: 55
     env:
       ANDROID_EMULATOR_WAIT_TIME_BEFORE_KILL: "60"
+      # GitHub-hosted runners may not expose KVM; explicitly allow QEMU TCG.
+      ANDROID_I_WANT_MY_TCG: "yes"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
