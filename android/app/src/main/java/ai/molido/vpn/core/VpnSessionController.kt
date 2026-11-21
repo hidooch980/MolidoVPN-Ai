@@ -62,6 +62,10 @@ class VpnSessionController(
     fun connect(slot: EngineSlot, configuration: String): Boolean {
         if (activeSession != null) return activeOwner == slot && supervisor.snapshot().state == SessionState.RUNNING
         val adapter = adaptersBySlot[slot] ?: return false
+        if (supervisor.requiresTunLease() && adapter !is TunLeaseAwareEngineAdapter) {
+            record("ENGINE_TUN_LEASE_UNSUPPORTED", "Registered engine does not accept the shared TUN lease")
+            return false
+        }
         val assessment = networkAssessmentProvider?.invoke()
         if (assessment != null) {
             val decision = AdaptivePathPolicyCore.evaluate(assessment, networkPolicyProvider())
@@ -77,7 +81,13 @@ class VpnSessionController(
         }
         publishState()
         val session = try {
-            adapter.start(configuration)
+            if (supervisor.requiresTunLease()) {
+                val lease = supervisor.tunLeaseFor(slot)
+                    ?: error("Shared TUN lease reservation is missing")
+                (adapter as TunLeaseAwareEngineAdapter).start(configuration, lease)
+            } else {
+                adapter.start(configuration)
+            }
         } catch (failure: Throwable) {
             pendingEngineFailures.remove(slot)
             supervisor.markFailed(slot)
@@ -85,6 +95,10 @@ class VpnSessionController(
             if (cleanupSession != null) {
                 activeSession = cleanupSession
                 activeOwner = slot
+            } else if (supervisor.requiresTunLease()) {
+                check(supervisor.releaseUnstartedReservation(slot)) {
+                    "Startup failed without a session handle, but shared TUN reservation could not be safely released"
+                }
             } else {
                 supervisor.beginStopping(slot)
                 supervisor.release(slot)
