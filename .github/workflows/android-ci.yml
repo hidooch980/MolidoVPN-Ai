@@ -114,6 +114,7 @@ jobs:
           cp data/geosite.dat assets/geosite.dat
           go mod download
           go mod verify
+          git diff --exit-code -- go.mod go.sum
           go list -m all > module-inventory.txt
           printf 'wrapper_commit=%s\n' "$XRAY_WRAPPER_COMMIT" > build-inputs.txt
           printf 'go=%s\n' "$(go version)" >> build-inputs.txt
