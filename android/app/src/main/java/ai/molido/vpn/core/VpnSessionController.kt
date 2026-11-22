@@ -251,6 +251,21 @@ class VpnSessionController(
         return true
     }
 
+
+    private val recoveryAttemptGate = RecoveryAttemptGate()
+
+    /** Atomically reserves one bounded retry slot; concurrent callers cannot overlap. */
+    @Synchronized
+    fun beginRecoveryAttempt(): RecoveryAttemptToken? = recoveryAttemptGate.tryStart()
+
+    /** Completes only the exact outstanding token; stale callbacks cannot unlock a newer attempt. */
+    @Synchronized
+    fun completeRecoveryAttempt(token: RecoveryAttemptToken, connected: Boolean): Boolean =
+        recoveryAttemptGate.complete(token, connected)
+
+    @Synchronized
+    fun recoveryAttemptsStarted(): Int = recoveryAttemptGate.attemptsStarted()
+
     @Synchronized fun snapshot(): SessionSnapshot = supervisor.snapshot()
     @Synchronized fun latestPathDecision(): AdaptivePathDecision? = lastPathDecision
 
