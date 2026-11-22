@@ -208,22 +208,46 @@ class VpnSessionController(
      * converted to an explicit invalid assessment; they never imply STOPPED or healthy.
      * Callers may schedule this at a bounded cadence from the app lifecycle monitor.
      */
-    @Synchronized
     fun observeActiveTunnelHealth(): TunnelHealthAssessment? {
-        val owner = activeOwner ?: return null
-        if (activeSession == null || supervisor.snapshot().state != SessionState.RUNNING) return null
-        val provider = adaptersBySlot[owner] as? TunnelHealthAwareAdapter ?: return null
+        // Never call an adapter while holding the controller monitor: native callbacks
+        // can re-enter the controller while the adapter serializes backend operations.
+        val capture = synchronized(this) {
+            val owner = activeOwner
+            val session = activeSession
+            val snapshot = supervisor.snapshot()
+            val provider = owner?.let { adaptersBySlot[it] as? TunnelHealthAwareAdapter }
+            if (owner == null || session == null || provider == null ||
+                snapshot.state != SessionState.RUNNING
+            ) null else HealthSampleCapture(owner, session, snapshot.generation, provider)
+        } ?: return null
+
         val assessment = try {
-            provider.runtimeHealth(nowEpochMillis())
+            capture.provider.runtimeHealth(nowEpochMillis())
         } catch (_: Exception) {
             TunnelHealthAssessment(
                 state = TunnelHealthState.INVALID_TELEMETRY,
                 explanation = "Runtime telemetry could not be read"
             )
         } ?: return null
-        record("TUNNEL_HEALTH_${assessment.state.name}", assessment.explanation)
+
+        // Drop stale samples if disconnect/reconnect changed the owner or generation
+        // while native telemetry was being read.
+        synchronized(this) {
+            val current = supervisor.snapshot()
+            if (activeOwner != capture.owner || activeSession !== capture.session ||
+                current.generation != capture.generation || current.state != SessionState.RUNNING
+            ) return null
+            record("TUNNEL_HEALTH_${assessment.state.name}", assessment.explanation)
+        }
         return assessment
     }
+
+    private data class HealthSampleCapture(
+        val owner: EngineSlot,
+        val session: EngineSession,
+        val generation: Long,
+        val provider: TunnelHealthAwareAdapter
+    )
 
 
     /**
