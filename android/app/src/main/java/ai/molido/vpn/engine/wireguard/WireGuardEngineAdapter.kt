@@ -13,6 +13,7 @@ import ai.molido.vpn.core.TunLeaseToken
 import ai.molido.vpn.core.TunOwnershipCoordinator
 import ai.molido.vpn.core.TunnelHealthAssessment
 import ai.molido.vpn.core.TunnelHealthCore
+import ai.molido.vpn.core.TunnelHealthAwareAdapter
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicBoolean
@@ -31,7 +32,7 @@ data class WireGuardRuntimeStatistics(
 class WireGuardEngineAdapter(
     context: Context,
     private val tunOwnership: TunOwnershipCoordinator
-) : TunLeaseAwareEngineAdapter, EngineFailureAwareAdapter {
+) : TunLeaseAwareEngineAdapter, EngineFailureAwareAdapter, TunnelHealthAwareAdapter {
     override val slot: EngineSlot = EngineSlot.WIREGUARD
 
     private val lock = Any()
@@ -65,7 +66,7 @@ class WireGuardEngineAdapter(
      * Reports backend and peer-handshake evidence. A recent handshake is not a
      * general internet/DNS/data-plane reachability test.
      */
-    fun runtimeHealth(nowEpochMillis: Long = System.currentTimeMillis()): TunnelHealthAssessment? =
+    override fun runtimeHealth(nowEpochMillis: Long): TunnelHealthAssessment? =
         synchronized(lock) {
             val tunnel = activeTunnel ?: return@synchronized null
             val statistics = backend.getStatistics(tunnel)

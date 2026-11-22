@@ -610,4 +610,70 @@ class VpnSessionControllerTest {
         assertNull(supervisor.currentOwner())
     }
 
+
+    @Test
+    fun runtimeHealthIsSampledOnlyForTheRunningActiveSessionAndRecorded() {
+        val diagnostics = DiagnosticsObservabilityCore(enabled = true)
+        val expected = TunnelHealthAssessment(
+            state = TunnelHealthState.HANDSHAKE_RECENT,
+            peerActivityObserved = true,
+            explanation = "Peer handshake observed"
+        )
+        var sampledAt = -1L
+        val adapter = object : EngineAdapter, TunnelHealthAwareAdapter {
+            override val slot = EngineSlot.WIREGUARD
+            override fun start(configuration: String): EngineSession = FakeSession()
+            override fun runtimeHealth(nowEpochMillis: Long): TunnelHealthAssessment {
+                sampledAt = nowEpochMillis
+                return expected
+            }
+        }
+        val controller = VpnSessionController(
+            SessionSupervisor(), listOf(adapter), diagnostics = diagnostics,
+            nowEpochMillis = { 123_456L }
+        )
+        assertNull(controller.observeActiveTunnelHealth())
+        assertTrue(controller.connect(EngineSlot.WIREGUARD, "profile"))
+        assertEquals(expected, controller.observeActiveTunnelHealth())
+        assertEquals(123_456L, sampledAt)
+        assertEquals("TUNNEL_HEALTH_HANDSHAKE_RECENT", diagnostics.snapshot().single().code)
+    }
+
+    @Test
+    fun telemetryReadFailureBecomesInvalidAndDoesNotChangeSessionOwnership() {
+        val diagnostics = DiagnosticsObservabilityCore(enabled = true)
+        val adapter = object : EngineAdapter, TunnelHealthAwareAdapter {
+            override val slot = EngineSlot.WIREGUARD
+            override fun start(configuration: String): EngineSession = FakeSession()
+            override fun runtimeHealth(nowEpochMillis: Long): TunnelHealthAssessment? {
+                throw IllegalStateException("backend diagnostics unavailable")
+            }
+        }
+        val supervisor = SessionSupervisor()
+        val controller = VpnSessionController(supervisor, listOf(adapter), diagnostics = diagnostics)
+        assertTrue(controller.connect(EngineSlot.WIREGUARD, "profile"))
+        val health = controller.observeActiveTunnelHealth()
+        assertEquals(TunnelHealthState.INVALID_TELEMETRY, health?.state)
+        assertEquals(SessionState.RUNNING, controller.snapshot().state)
+        assertEquals(EngineSlot.WIREGUARD, supervisor.currentOwner())
+        assertEquals("TUNNEL_HEALTH_INVALID_TELEMETRY", diagnostics.snapshot().single().code)
+        assertFalse(diagnostics.snapshot().single().detail.contains("backend diagnostics unavailable"))
+    }
+
+    @Test
+    fun healthSamplingIsUnavailableAfterSessionFailureOrDisconnect() {
+        val adapter = object : EngineAdapter, TunnelHealthAwareAdapter {
+            override val slot = EngineSlot.WIREGUARD
+            override fun start(configuration: String): EngineSession = FakeSession()
+            override fun runtimeHealth(nowEpochMillis: Long): TunnelHealthAssessment =
+                TunnelHealthAssessment(TunnelHealthState.HANDSHAKE_PENDING, explanation = "waiting")
+        }
+        val controller = VpnSessionController(SessionSupervisor(), listOf(adapter))
+        assertTrue(controller.connect(EngineSlot.WIREGUARD, "profile"))
+        assertTrue(controller.reportActiveEngineFailure())
+        assertNull(controller.observeActiveTunnelHealth())
+        assertTrue(controller.disconnect())
+        assertNull(controller.observeActiveTunnelHealth())
+    }
+
 }

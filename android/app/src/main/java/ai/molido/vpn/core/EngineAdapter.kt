@@ -47,3 +47,9 @@ interface TunLeaseAwareEngineAdapter : EngineAdapter {
     override fun start(configuration: String): EngineSession =
         throw IllegalStateException("This engine must be started through the shared TUN lease supervisor")
 }
+
+
+/** Runtime telemetry contract exposed to the session supervisor for evidence-based monitoring. */
+interface TunnelHealthAwareAdapter {
+    fun runtimeHealth(nowEpochMillis: Long = System.currentTimeMillis()): TunnelHealthAssessment?
+}

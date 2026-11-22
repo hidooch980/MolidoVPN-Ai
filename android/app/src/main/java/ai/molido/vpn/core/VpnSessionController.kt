@@ -202,6 +202,28 @@ class VpnSessionController(
         return true
     }
 
+    /**
+     * Samples health only for the currently RUNNING session. Telemetry exceptions are
+     * converted to an explicit invalid assessment; they never imply STOPPED or healthy.
+     * Callers may schedule this at a bounded cadence from the app lifecycle monitor.
+     */
+    @Synchronized
+    fun observeActiveTunnelHealth(): TunnelHealthAssessment? {
+        val owner = activeOwner ?: return null
+        if (activeSession == null || supervisor.snapshot().state != SessionState.RUNNING) return null
+        val provider = adaptersBySlot[owner] as? TunnelHealthAwareAdapter ?: return null
+        val assessment = try {
+            provider.runtimeHealth(nowEpochMillis())
+        } catch (_: Exception) {
+            TunnelHealthAssessment(
+                state = TunnelHealthState.INVALID_TELEMETRY,
+                explanation = "Runtime telemetry could not be read"
+            )
+        } ?: return null
+        record("TUNNEL_HEALTH_${assessment.state.name}", assessment.explanation)
+        return assessment
+    }
+
     @Synchronized fun snapshot(): SessionSnapshot = supervisor.snapshot()
     @Synchronized fun latestPathDecision(): AdaptivePathDecision? = lastPathDecision
 
