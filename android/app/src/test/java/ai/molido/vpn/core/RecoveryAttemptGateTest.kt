@@ -123,4 +123,20 @@ class RecoveryAttemptGateTest {
         assertTrue(gate.complete(newToken, connected = false))
     }
 
+
+    @Test
+    fun explicitResetPersistsMonotonicGenerationAcrossProcessRecreation() {
+        val store = InMemoryRecoveryStateStore()
+        val first = RecoveryAttemptGate(maxAttempts = 3, store = store)
+        val oldToken = first.tryStart()!!
+        assertTrue(first.resetAfterExplicitUserAction())
+        assertEquals(oldToken.generation, store.state.generation)
+
+        val recreated = RecoveryAttemptGate(maxAttempts = 3, store = store)
+        val nextToken = recreated.tryStart()!!
+        assertTrue(nextToken.generation > oldToken.generation)
+        assertFalse(recreated.complete(oldToken, connected = true))
+        assertTrue(recreated.complete(nextToken, connected = false))
+    }
+
 }
