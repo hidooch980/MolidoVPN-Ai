@@ -11,6 +11,8 @@ import ai.molido.vpn.core.EngineStartException
 import ai.molido.vpn.core.EngineFailureAwareAdapter
 import ai.molido.vpn.core.TunLeaseToken
 import ai.molido.vpn.core.TunOwnershipCoordinator
+import ai.molido.vpn.core.TunnelHealthAssessment
+import ai.molido.vpn.core.TunnelHealthCore
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicBoolean
@@ -38,6 +40,7 @@ class WireGuardEngineAdapter(
     }
     private var activeTunnel: Tunnel? = null
     private var activeLease: TunLeaseToken? = null
+    private var activeSessionStartedAtEpochMillis: Long? = null
     @Volatile private var failureListener: (() -> Unit)? = null
 
     override fun setFailureListener(listener: (() -> Unit)?) {
@@ -57,6 +60,27 @@ class WireGuardEngineAdapter(
             latestHandshakeEpochMillis = latestHandshake
         )
     }
+
+    /**
+     * Reports backend and peer-handshake evidence. A recent handshake is not a
+     * general internet/DNS/data-plane reachability test.
+     */
+    fun runtimeHealth(nowEpochMillis: Long = System.currentTimeMillis()): TunnelHealthAssessment? =
+        synchronized(lock) {
+            val tunnel = activeTunnel ?: return@synchronized null
+            val statistics = backend.getStatistics(tunnel)
+            val latestHandshake = statistics.peers()
+                .mapNotNull { peer -> statistics.peer(peer)?.latestHandshakeEpochMillis() }
+                .maxOrNull() ?: 0L
+            TunnelHealthCore.assess(
+                backendUp = backend.getState(tunnel) == Tunnel.State.UP,
+                sessionStartedAtEpochMillis = activeSessionStartedAtEpochMillis,
+                nowEpochMillis = nowEpochMillis,
+                latestHandshakeEpochMillis = latestHandshake,
+                receivedBytes = statistics.totalRx(),
+                transmittedBytes = statistics.totalTx()
+            )
+        }
 
     override fun start(configuration: String, lease: TunLeaseToken): EngineSession = synchronized(lock) {
         check(activeTunnel == null && activeLease == null) { "WireGuard session is already active" }
@@ -116,6 +140,7 @@ class WireGuardEngineAdapter(
                     }
                     activeTunnel = null
                     activeLease = null
+                    activeSessionStartedAtEpochMillis = null
                     stopped = true
                 } catch (failure: Throwable) {
                     intentionalStop.set(false)
@@ -126,6 +151,7 @@ class WireGuardEngineAdapter(
 
         activeTunnel = tunnel
         activeLease = lease
+        activeSessionStartedAtEpochMillis = System.currentTimeMillis()
         try {
             val resultingState = backend.setState(tunnel, Tunnel.State.UP, parsed)
             check(resultingState == Tunnel.State.UP &&
