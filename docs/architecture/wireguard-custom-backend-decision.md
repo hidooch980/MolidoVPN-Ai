@@ -113,3 +113,18 @@ Binder death/process death is a cleanup signal, not an ACK. Missing ACK, timeout
 ## Current state
 
 This record selects the implementation path only. The repository still uses the published WireGuard tunnel AAR and `GoBackend`; `TunOwnershipCoordinator` is still a platform-neutral state machine and is not connected to Android `VpnService`, Binder, `ParcelFileDescriptor`, or a custom backend. The central service, secure FD handoff, custom backend, and physical-device data-plane validation remain **NOT IMPLEMENTED**.
+
+
+## Additional source-level findings from pinned GoBackend review — 2026-11-22
+
+The pinned `1.0.20260102` `GoBackend.java` was reviewed through the complete `setStateInternal` and nested `VpnService` implementation. These are migration requirements, not claims that the current AAR has been patched:
+
+1. **Socket protection result is ignored upstream.** After `wgTurnOn`, upstream calls `service.protect(wgGetSocketV4(handle))` and `service.protect(wgGetSocketV6(handle))` but does not check either boolean result. The Molido source fork must validate both descriptors and require both protect calls to return true before publishing the session as UP. Any invalid descriptor or failed protect must stop the Go handle, close the engine-side duplicate, close the central original, and retain the lease if cleanup cannot be confirmed.
+2. **The JNI stop function has no return acknowledgement.** `wgTurnOff(int)` returns void. The Java wrapper cannot infer successful FD closure from a returned status code. The fork needs an explicit, reviewed stop result at its Java/native boundary or another reliable closure acknowledgement; it must not manufacture success from the backend's logical DOWN state.
+3. **The current AAR owns service lifecycle.** `GoBackend.setStateInternal(UP)` starts/awaits the nested service and calls `Builder.establish()`; DOWN calls `wgTurnOff` and `stopSelf()`; service destruction also calls `wgTurnOff`. The fork must remove all three service-owned lifecycle paths and make the central Molido service the sole owner, including destruction/revocation handling.
+4. **Partial startup must be transactional.** The upstream sequence assigns the Go handle, sets current tunnel state, then protects sockets. A Molido wrapper must not expose a connected state before socket protection, ownership bookkeeping, and all startup steps complete. Failure at any intermediate step must use one idempotent rollback path and preserve the lease until both FD sides are safe.
+5. **Build toolchain is already pinned inside upstream Makefile.** The exact tag's `libwg-go/Makefile` downloads Go 1.24.3 and verifies the archive SHA-256 for linux-amd64 before extraction. Its `go.mod` declares Go 1.23.1. Do not substitute a runner-provided Go installation for this Makefile-managed toolchain without a reviewed reproducibility change.
+
+## CI manifest guard
+
+A Python guard and unit tests were added to the Android validation job. After release-variant assembly it inspects the merged release manifest and fails unless exactly one service declares the `android.net.VpnService` action. This is an interim invariant only: while the published AAR remains in use, the one service is still upstream `GoBackend.VpnService`, not Molido's central service. The guard must be tightened during migration to require the exact app-owned service and reject the upstream class.
