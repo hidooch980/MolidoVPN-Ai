@@ -52,6 +52,28 @@ jobs:
           test -n "$MANIFEST"
           python3 scripts/ci/validate_vpn_manifest.py "$MANIFEST"
 
+      - name: Assemble physical-device debug test APK (not a release)
+        run: python3 scripts/ci/gradle_retry.py -- gradle --no-daemon :android:app:assembleDebug
+      - name: Verify and fingerprint physical-device debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          APKSIGNER="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          sha256sum "$APK" > "$APK.sha256"
+      - name: Upload physical-device debug test APK (not a release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: molido-vpn-android-device-test-debug
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/debug/app-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
+
 
 
   xray-android-arm64:
