@@ -16,17 +16,24 @@ class GradleRetryClassificationTests(unittest.TestCase):
             "TRANSIENT_NETWORK",
         )
 
-    def test_not_found_artifact_is_not_transient(self):
+    def test_http_404_is_never_transient(self):
         self.assertEqual(
             classify_failure("Could not GET https://repo.maven.apache.org/missing.jar: status code 404"),
+            "DETERMINISTIC",
+        )
+
+    def test_single_missing_artifact_is_not_transient(self):
+        self.assertEqual(
+            classify_failure("Could not find com.example:missing:1.0."),
             "DETERMINISTIC_OR_UNKNOWN",
         )
 
-    def test_missing_artifact_without_status_is_not_transient(self):
-        self.assertEqual(
-            classify_failure("Could not find artifact com.example:missing:1.0"),
-            "DETERMINISTIC_OR_UNKNOWN",
+    def test_repository_wide_missing_dependency_burst_is_transient(self):
+        output = "\\n".join(
+            f"Could not find com.example:artifact{i}:1.0.\\nSearched in the following locations"
+            for i in range(6)
         )
+        self.assertEqual(classify_failure(output), "TRANSIENT_NETWORK")
 
     def test_connection_reset_is_transient(self):
         self.assertEqual(
