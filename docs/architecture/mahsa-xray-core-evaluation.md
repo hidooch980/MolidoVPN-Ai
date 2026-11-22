@@ -34,6 +34,22 @@ Related repositories:
 
 MahsaNG itself is not the integration target. Its Android app contains its own VPN service(s), app-specific configuration and service orchestration. Copying those app services would conflict with Molido's single-TUN-owner requirement. Its release APK was not installed or dynamically tested as part of this review.
 
+## Finding 0 — AndroidLibXrayLite startup and embedding boundary
+
+Reviewed repository: https://github.com/GFW-knocker/AndroidLibXrayLite
+
+- Reviewed branch: `main2`; reviewed commit: `48f35be868ee247e53a8036e284a8c2f97c80068`.
+- Reviewed files: `README.md`, `libv2ray_main.go`, `libv2ray_support.go`, `go.mod`, `.github/workflows/main.yml`, and `gen_assets.sh`.
+- The repository is a Go `gomobile bind` wrapper that produces an Android AAR. Its `go.mod` pins Xray as `github.com/GFW-knocker/Xray-core v1.26.10-mahsa-r2` and declares Go `1.26.7`. The wrapper's root license is LGPL-3.0; its complete dependency/license inventory is still required.
+- The public Go API exposes `NewV2RayPoint`, `RunLoop`, `StopLoop`, `InitV2Env`, and a `V2RayVPNServiceSupportsSet` callback interface (`Prepare`, `Setup`, `Shutdown`, `Protect(fd)`, `OnEmitStatus`). `Protect(fd)` protects Xray-created outbound sockets from being routed back into the VPN. It is **not** the TUN descriptor handoff.
+- `InitV2Env` sets the asset path and XUDP key only. The reviewed wrapper does not expose a TUN-FD setter or an authenticated Binder/ParcelFileDescriptor handoff API. The reviewed repository is Go source; the Android-side callback implementation and service lifecycle must be reviewed separately before reuse.
+- The wrapper installs an alternative system dialer globally in the Go process. Keep it isolated from other native engines and do not assume it is safe to share a process with unrelated Go runtimes.
+- Lifecycle concerns in the reviewed code: `pointloop()` sets `IsRunning` and starts the Xray instance, then calls `Prepare()` and `Setup("")` but ignores their integer return codes before emitting `Running`. If `Vpoint.Start()` fails, the shown path resets `IsRunning` but does not visibly close and clear the newly created instance. Normal `StopLoop()` closes the core and emits `Closed`, but does not itself call `SupportSet.Shutdown()` (that callback is called on the asynchronous DNS-failure path). These semantics are not acceptable as-is for Molido's fail-closed start/stop contract; a reviewed wrapper fork or adapter must check callback results, close partial startup resources, and make shutdown acknowledgement explicit.
+- The repository's current build workflow is not reproducible enough for Molido: it installs `gomobile@latest`, runs `go mod tidy`, downloads latest GeoIP/geosite data via `gen_assets.sh`, uses floating `ubuntu-latest`, and uploads an AAR to a user-supplied GitHub Release tag. The asset script resolves mutable latest releases and the repository tree at the reviewed commit has no checked-in `data/` assets. Do not run this release workflow or import its output. A Molido build must pin source commit, Go/JDK/SDK/NDK, gomobile module version, module graph, and both data-asset URLs plus SHA-256; it must produce an artifact only (no release upload).
+- No ARM64 AAR was built or tested in this review. The README's generic `gomobile bind` command does not constitute evidence of an ARM64-only reproducible build.
+
+**Decision:** AndroidLibXrayLite is useful as a source/API reference, but is not ready to be consumed as a binary dependency. Build a controlled Molido-owned wrapper from pinned source only after pinning data assets and resolving the lifecycle defects above.
+
 ## Finding A — TUN FD input in Xray Android build
 
 At the reviewed source baseline, `proxy/tun/tun_android.go`:
