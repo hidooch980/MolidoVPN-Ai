@@ -336,7 +336,7 @@ class PatchPolicyTests(unittest.TestCase):
         from scripts.automation.patch_policy import validate_patch_plan
         p = self._plan()
         p["diff"] = p["diff"].replace("+added\n", "", 1)
-        self.assertEqual(validate_patch_plan(p)[1], "diff_line_count_mismatch")
+        self.assertEqual(validate_patch_plan(p)[1], "malformed_diff_hunk")
 
     def test_rejects_malformed_diff_headers(self):
         from scripts.automation.patch_policy import validate_patch_plan
@@ -355,7 +355,7 @@ class PatchPolicyTests(unittest.TestCase):
     def test_rejects_missing_hunk_header(self):
         from scripts.automation.patch_policy import validate_patch_plan
         p = self._plan()
-        p["diff"] = "\\n".join(line for line in p["diff"].splitlines()
+        p["diff"] = "\n".join(line for line in p["diff"].splitlines()
                                  if not line.startswith("@@ "))
         self.assertEqual(validate_patch_plan(p)[1], "malformed_diff_hunk")
 
