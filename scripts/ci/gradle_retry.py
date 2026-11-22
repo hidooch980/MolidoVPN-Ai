@@ -23,7 +23,7 @@ _TRANSIENT_FAILURES = (
 # A deterministic build/test failure must never be retried just because an earlier
 # line happened to mention a transient repository warning.
 _DETERMINISTIC_FAILURES = (
-    re.compile(r"AssertionError|There were failing tests|FAILED\s+in\s+\d", re.IGNORECASE),
+    re.compile(r"AssertionError|There were failing tests", re.IGNORECASE),
     re.compile(r"Unresolved reference|Compilation error|e: file://", re.IGNORECASE),
     re.compile(r"Could not compile .*?\.(?:kt|java)", re.IGNORECASE),
 )
