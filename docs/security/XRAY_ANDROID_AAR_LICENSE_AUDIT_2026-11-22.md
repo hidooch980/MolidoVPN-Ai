@@ -11,7 +11,7 @@ AAR SHA-256: `b5ddb1314247b5020c3205a2f634871fbe7cf4571bfbf5fcc59d5caa34fb14cb`
 
 ## Evidence
 
-The CI job generated `license-report.csv` using pinned `go-licenses@v1.6.0` against the checked-out wrapper's Go package tree. The CSV contains 61 dependency rows plus its header. The AAR build completed and its only native library entry is `jni/arm64-v8a/libgojni.so`; ELF inspection reports ELF64, little-endian, AArch64. The AAR contains the compiled Go library plus Java classes and GeoIP/GeoSite data assets.
+The CI job generated `license-report.csv` using pinned `go-licenses@v1.6.0` against the checked-out wrapper's Go package tree. The CSV contains 62 dependency rows and has no header row. The AAR build completed and its only native library entry is `jni/arm64-v8a/libgojni.so`; ELF inspection reports ELF64, little-endian, AArch64. The AAR contains the compiled Go library plus Java classes and GeoIP/GeoSite data assets.
 
 ## License inventory
 
@@ -23,9 +23,9 @@ The CI job generated `license-report.csv` using pinned `go-licenses@v1.6.0` agai
 | BSD-2-Clause | 3 |
 | MPL-2.0 | 2 |
 | GPL-3.0 | 2 |
-| LGPL-3.0 | 1 |
+| LGPL-3.0 | 2 |
 | CC0-1.0 | 1 |
-| **Total** | **61** |
+| **Total** | **62** |
 
 Material findings from the report:
 
