@@ -167,3 +167,28 @@ Audit update basis: branch `feature/wireguard-runtime-diagnostics`, head commit 
 6. Complete SBOM/license/dependency/native ABI review and signed artifact verification on the approved base-branch workflow.
 
 The CI pass raises confidence in the current source and emulator checks; it does not change the architecture or production release gates above.
+
+
+## 7. Superseding status — 2026-11-22 09:46 UTC
+
+This section supersedes the earlier section 6 where its head/CI claims differ.
+
+- Latest PR head observed: `492a99486100674796aa9a30d1d04ec99c50c23e`.
+- Commit `492a994` only changes `docs/REMAINING_WORK_AUDIT.md` (+33 lines); it does not change Android source or workflow code.
+- The last completed CI run visible for this branch is run #357, ID `45009130042`, associated with commit `10925259a6bb74639a314aa0ca48efa7465ac232`; conclusion: **cancelled**.
+- GitHub reports zero jobs for run #357. Therefore no test failure is evidenced by that run, but it also provides no passing validation for commit `10925259a` or the later head `492a994`.
+- The prior successful run #355 / ID `45004213465` passed on commit `61d707c673d29fe9933520eaed65705ff55a09ee` only. It must not be presented as CI success for later documentation commits.
+- No evidence currently proves signed-release verification, physical Android device acceptance, real WireGuard server/data-plane acceptance, Binder descriptor handoff, or central app-owned TUN ownership.
+- The Android implementation still uses the published `com.wireguard.android:tunnel:1.0.20260102` dependency and `GoBackend`; the app manifest explicitly documents that the AAR contributes `GoBackend.VpnService`. The custom source backend and central VPN service remain NOT IMPLEMENTED.
+- PR #4 remains open, Draft, and unmerged. Do not merge or publish based on the historical CI pass.
+
+### Next actions in strict priority
+
+1. Re-run a complete CI workflow for the exact current PR head; investigate why the preceding PR run was cancelled before any job was created. Do not mark current-head CI green until a completed run is observed.
+2. Start P0 source-backend work from the pinned, verified upstream WireGuard source. Implement in a small reviewable patch series; preserve notices and license inventory; do not remove the AAR until a tested replacement is ready.
+3. Implement central `VpnService` and authenticated Binder `ParcelFileDescriptor` handoff only after the custom backend accepts an externally owned descriptor and socket-protection callback.
+4. Add instrumentation for actual FD duplication/closure, wrong UID, stale generation, Binder death, partial startup, cancellation and competing engines.
+5. Migrate WireGuard atomically, assert exactly one merged VPN service, and rerun full CI.
+6. Only then perform authorized physical-device/server data-plane, DNS, IPv4/IPv6, leak, handover and sustained-stability acceptance.
+
+No root cause is assigned to the cancellation because GitHub returned no jobs or logs for run #357. Do not speculate that it was caused by a source-code defect.
