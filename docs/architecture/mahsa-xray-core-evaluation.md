@@ -50,6 +50,25 @@ Reviewed repository: https://github.com/GFW-knocker/AndroidLibXrayLite
 
 **Decision:** AndroidLibXrayLite is useful as a source/API reference, but is not ready to be consumed as a binary dependency. Build a controlled Molido-owned wrapper from pinned source only after pinning data assets and resolving the lifecycle defects above.
 
+## Finding 0.1 — How MahsaNG actually runs Xray on Android
+
+Reviewed MahsaNG Android sources at its `master` branch (the application repository is GPL-3.0):
+- `V2rayNG/app/src/main/kotlin/com/v2ray/ang/service/V2RayServiceManager.kt`
+- `V2rayNG/app/src/main/kotlin/com/v2ray/ang/service/V2RayVpnService.kt`
+- `V2rayNG/app/src/main/kotlin/com/v2ray/ang/service/V2RayProxyOnlyService.kt`
+
+The inspected VPN-mode path is **not** a direct transfer of the Android TUN FD into the Xray Go runtime:
+
+1. `V2RayServiceManager` creates `Libv2ray.newV2RayPoint(V2RayCallback(), ...)`, sets the asset path with `initV2Env`, loads a generated Xray configuration, and calls `runLoop()`.
+2. The Xray callback's `setup()` starts the Android VPN service. `protect(fd)` delegates to Android `VpnService.protect(fd)` for Xray's outbound sockets.
+3. `V2RayVpnService` creates the one VPN interface with `VpnService.Builder.establish()`, configures addresses/routes/DNS/MTU, and launches a separate native `libtun2socks.so` process.
+4. The VPN service passes the TUN file descriptor to that tun2socks process over a filesystem `LocalSocket` using `setFileDescriptorsForSend()` (SCM_RIGHTS). tun2socks forwards packets to Xray's local SOCKS listener.
+5. Network callbacks update the VPN service's underlying network; shutdown destroys tun2socks, stops Xray, stops the service, and closes the interface.
+
+This is a working architectural reference for a **VpnService + tun2socks + local SOCKS** design, but it is not evidence that AndroidLibXrayLite consumes the TUN FD itself. It adds another native helper process, socket IPC, a local SOCKS listener, and a separate lifecycle/cleanup protocol. The inspected `sendFd()` retries the local-socket handoff but does not show an explicit receiver cleanup acknowledgement. The callback implementation also returns `true` from `protect()` when the service reference is missing; Molido must not copy this fail-open behavior.
+
+**Molido decision:** do not copy MahsaNG's service or tun2socks orchestration. Prefer a single central Molido VpnService and a directly authenticated descriptor contract to the isolated Xray engine if the pinned Xray TUN implementation can be safely embedded. If that direct path proves impractical, any tun2socks helper must remain subordinate to the same central service, have authenticated descriptor transfer and explicit shutdown ACK, and must not establish another VPN interface. Either option remains unimplemented until tested.
+
 ## Finding A — TUN FD input in Xray Android build
 
 At the reviewed source baseline, `proxy/tun/tun_android.go`:
