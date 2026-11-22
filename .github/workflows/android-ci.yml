@@ -419,6 +419,8 @@ jobs:
           packages: ndk;27.2.12479018
       - name: Test pinned WireGuard source patch transformer
         run: python3 -m unittest scripts.ci.test_patch_wireguard_android -v
+      - name: Test pinned WireGuard UAPI cleanup patch transformer
+        run: python3 -m unittest scripts.ci.test_patch_wireguard_uapi -v
       - name: Build exact upstream source with Go engine only
         shell: bash
         run: bash scripts/ci/build-wireguard-go-only.sh
