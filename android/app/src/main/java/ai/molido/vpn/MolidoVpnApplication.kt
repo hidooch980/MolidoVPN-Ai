@@ -14,6 +14,7 @@ import ai.molido.vpn.core.ControlPlaneFetchResult
 import ai.molido.vpn.core.DiagnosticsObservabilityCore
 import ai.molido.vpn.core.EngineCapability
 import ai.molido.vpn.core.EngineCapabilityCatalog
+import ai.molido.vpn.core.EngineSlot
 import ai.molido.vpn.core.NetworkAssessment
 import ai.molido.vpn.core.NetworkIntelligenceCore
 import ai.molido.vpn.core.NetworkObservation
