@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply the reviewed Molido fail-closed lifecycle patch to the pinned AndroidLibXrayLite source."""
+"""Apply Molido's reviewed fail-closed patch to a pinned AndroidLibXrayLite checkout."""
 from __future__ import annotations
 
 import argparse
@@ -138,19 +138,97 @@ func shutdownVPNService(s V2RayVPNServiceSupportsSet) error {
 \t}
 \treturn nil
 }"""
-    source = replace_once(source, old_pointloop, new_pointloop, "core and VPN startup")
-    return source
+    return replace_once(source, old_pointloop, new_pointloop, "core and VPN startup")
+
+
+def patch_support_test_source(source: str) -> str:
+    return replace_once(
+        source,
+        'fmt.Fprintf(conn, fmt.Sprintf("GET / HTTP/1.1\\r\\nHost: %s\\r\\n\\r\\n", _host))',
+        'fmt.Fprintf(conn, "GET / HTTP/1.1\\r\\nHost: %s\\r\\n\\r\\n", _host)',
+        "non-constant fmt.Fprintf test call",
+    )
+
+
+LIFECYCLE_TEST = r'''package libv2ray
+
+import (
+    "errors"
+    "strings"
+    "testing"
+)
+
+type molidoTestVPNService struct {
+    prepareCode int
+    setupCode int
+    shutdownCode int
+    prepareCalls int
+    setupCalls int
+    shutdownCalls int
+    statuses int
+}
+
+func (s *molidoTestVPNService) Prepare() int { s.prepareCalls++; return s.prepareCode }
+func (s *molidoTestVPNService) Setup(string) int { s.setupCalls++; return s.setupCode }
+func (s *molidoTestVPNService) Shutdown() int { s.shutdownCalls++; return s.shutdownCode }
+func (s *molidoTestVPNService) Protect(int) bool { return true }
+func (s *molidoTestVPNService) OnEmitStatus(int, string) int { s.statuses++; return 0 }
+
+func TestMolidoPrepareVPNServiceSuccess(t *testing.T) {
+    s := &molidoTestVPNService{}
+    if err := prepareVPNService(s); err != nil { t.Fatal(err) }
+    if s.prepareCalls != 1 || s.setupCalls != 1 || s.shutdownCalls != 0 {
+        t.Fatalf("unexpected callback counts: %+v", s)
+    }
+}
+
+func TestMolidoPrepareFailureTriggersShutdown(t *testing.T) {
+    s := &molidoTestVPNService{prepareCode: 17}
+    err := prepareVPNService(s)
+    if err == nil || !strings.Contains(err.Error(), "prepare failed") { t.Fatalf("unexpected error: %v", err) }
+    if s.prepareCalls != 1 || s.setupCalls != 0 || s.shutdownCalls != 1 {
+        t.Fatalf("partial Prepare was not rolled back: %+v", s)
+    }
+}
+
+func TestMolidoSetupFailureTriggersShutdown(t *testing.T) {
+    s := &molidoTestVPNService{setupCode: 23}
+    err := prepareVPNService(s)
+    if err == nil || !strings.Contains(err.Error(), "setup failed") { t.Fatalf("unexpected error: %v", err) }
+    if s.prepareCalls != 1 || s.setupCalls != 1 || s.shutdownCalls != 1 {
+        t.Fatalf("partial Setup was not rolled back: %+v", s)
+    }
+}
+
+func TestMolidoNilServiceFailsClosed(t *testing.T) {
+    if err := prepareVPNService(nil); err == nil { t.Fatal("nil service unexpectedly accepted") }
+    if err := shutdownVPNService(nil); err != nil { t.Fatal(err) }
+}
+
+func TestMolidoShutdownErrorIsReturned(t *testing.T) {
+    s := &molidoTestVPNService{shutdownCode: 9}
+    err := shutdownVPNService(s)
+    if err == nil || !strings.Contains(err.Error(), "shutdown failed") { t.Fatalf("unexpected error: %v", err) }
+    _ = errors.Is(err, nil)
+}
+'''
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-dir", type=Path, required=True)
     args = parser.parse_args()
-    path = args.source_dir / "libv2ray_main.go"
-    original = path.read_text(encoding="utf-8")
-    patched = patch_main_source(original)
-    path.write_text(patched, encoding="utf-8")
-    print(f"Applied fail-closed lifecycle patch: {path}")
+    main_path = args.source_dir / "libv2ray_main.go"
+    support_test_path = args.source_dir / "libv2ray_support_test.go"
+    lifecycle_test_path = args.source_dir / "molido_lifecycle_test.go"
+    if lifecycle_test_path.exists():
+        raise RuntimeError("Molido lifecycle tests already exist")
+    patched_main = patch_main_source(main_path.read_text(encoding="utf-8"))
+    patched_support_test = patch_support_test_source(support_test_path.read_text(encoding="utf-8"))
+    main_path.write_text(patched_main, encoding="utf-8")
+    support_test_path.write_text(patched_support_test, encoding="utf-8")
+    lifecycle_test_path.write_text(LIFECYCLE_TEST, encoding="utf-8")
+    print("Applied Molido lifecycle hardening and deterministic Go tests")
 
 
 if __name__ == "__main__":
