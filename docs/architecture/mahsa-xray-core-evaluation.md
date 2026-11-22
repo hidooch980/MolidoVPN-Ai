@@ -107,6 +107,22 @@ Do not copy the implementation blindly: parsing should reject malformed ports, d
 5. **MASQUE experiment:** behind a disabled development test profile and a controlled, authorized endpoint only after provider/API/terms gate passes. Verify both H3 and H2, IPv4/IPv6, DNS, UDP, MTU/fragmentation, keepalive, reconnect, and fail-closed behavior. Never expose it in production UI before acceptance.
 6. **Regression/security/device tests:** malformed configuration, key redaction, socket protection, DNS and IPv6 leaks, network handover, process death, FD leaks, repeated start/stop, and sustained bidirectional traffic on a physical Android phone.
 
+## Required Xray acceptance matrix (must all pass before registration)
+
+| Gate | Required evidence | Failure behavior |
+|---|---|---|
+| ARM64 artifact | Pinned wrapper/Xray/module graph; pinned Go, gomobile, JDK, SDK and NDK; pinned GeoIP/geosite assets with SHA-256; AAR contains ARM64 only; archived build-input manifest and artifact hash | Do not import or register Xray |
+| Secure TUN handoff | Binder caller UID validation; per-session nonce and generation; `ParcelFileDescriptor` transfer; receiver duplicates FD; no raw integer sent over IPC; central service retains original | Reject start; retain lease if ownership is uncertain |
+| Startup | Core creation, config validation, outbound socket protection, and all service callbacks return success before session reports RUNNING | Close partial core/resources; report failure; no RUNNING status |
+| IPv4 / IPv6 | Real routed traffic for IPv4 and IPv6, correct address/routes/MTU, network transition tests; if IPv6 cannot be supported, explicitly block IPv6 traffic rather than leak it | Fail closed; do not claim connected |
+| DNS | Real A and AAAA lookups through configured DNS path; no plaintext/system-resolver leak; resolver failure and timeout tested | Fail closed; do not silently fall back to unapproved DNS |
+| Transport | Real TCP and UDP bidirectional traffic through a controlled authorized test endpoint; handshake/data-plane proof, not merely core-start status | Do not mark engine connected |
+| Reconnect | Wi-Fi/mobile handover, loss/restore, stale session, duplicate start, partial startup and process death | Old generation cannot reclaim or release a newer lease |
+| Cleanup | Xray closes its duplicate and sockets; explicit cleanup ACK; central service closes original; lease released only after confirmed closure; repeated start/stop shows no FD/thread growth | Keep lease in cleanup-required state; block another engine |
+| Stability | At least 30-minute bidirectional run plus repeated reconnect/stop cycles on a physical Android device | No device-tested or production status |
+
+CI/emulator success can prove build and policy behavior only. It cannot replace physical-device VPN routing, DNS-leak, network-handover, or sustained data-plane tests.
+
 ## Explicit non-goals
 
 - No new engine slot and no seventh engine.
@@ -118,7 +134,8 @@ Do not copy the implementation blindly: parsing should reject malformed ports, d
 
 ## Current MolidoVPN status after this evaluation
 
-- Xray: **NOT_IMPLEMENTED / NOT_SELECTABLE**. Existing process isolation is scaffolding only.
+- Xray: **NOT_IMPLEMENTED / NOT_SELECTABLE**. Existing process isolation is scaffolding only; AndroidLibXrayLite has been source-audited but is not yet a Molido dependency.
+- ARM64 build: a pinned CI validation job has been added to the PR. It is configured to build an AAR and upload build evidence only; no run/result is recorded for the latest commit yet.
 - MASQUE: **BLOCKED** pending supported public integration path, terms, and end-to-end tests.
 - TUN FD: **REFERENCE DESIGN IDENTIFIED**; Molido's secure handoff and cleanup ACK are not implemented.
 - WireGuard profile parsing: **candidate test cases only**; no runtime code copied.
