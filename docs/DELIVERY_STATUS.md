@@ -136,3 +136,17 @@ PR #4 remains **Draft / open / unmerged**. Keep it Draft until the central TUN m
 - No Molido JNI wrapper integrated into the Android APK, app-owned central `VpnService`, authenticated Binder/ParcelFileDescriptor handoff, or real `VpnService.protect()` callback wiring exists yet. The app still depends on the AAR's `GoBackend.VpnService`.
 - Do not claim FD ownership is fully solved: the patch addresses audited UAPI listener partial-failure paths and prior Android entry-point lifecycle issues, but Java/Binder/Go ownership transfer and process-death cleanup remain unimplemented.
 - PR #4 remains Draft/open/unmerged. Stable Production remains BLOCKED.
+
+
+
+## Latest verified CI and debug-artifact audit — 2026-11-22 (head c39df6a)
+
+- [PR run 45041123188](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/45041123188) and [push run 45041118237](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/45041118237): **all required jobs passed** on commit `c39df6a601d1fe2be4953cd9eb425c786a206981`.
+- Passed: Android source validation, unit tests/lint/build checks, exactly-one-VPN-service manifest guard, physical-device debug-test APK assembly and signature verification, 24 Android Keystore instrumentation tests on CI emulator, pinned WireGuard Android entry-point and UAPI cleanup transformer tests plus Go-only native source build, Xray ARM64 AAR build validation, and self-hosted control-plane tests.
+- Keystore emulator log: **24 tests started, 24 finished, BUILD SUCCESSFUL**.
+- The manifest guard confirms the only VPN service remains upstream `com.wireguard.android.backend.GoBackend$VpnService`; this is expected at this migration stage and is not proof of Molido-owned TUN.
+- The uploaded artifact `molido-vpn-android-device-test-debug` (artifact ID `14760859634`) is a **debug-only test APK**, not a release. APK signature verification passed with v2; its signer is the standard **Android Debug** certificate, SHA-256 `39c97819cb3274996fc4c80943a92f9603b45fe6c3f27984f674a2be83a9bdba`. It must not be represented as the permanent owner production signing identity.
+- The Xray build-validation artifact is `xray-android-arm64-build-9f17f25e0f48fbfa43b2df7fd5d6c7dae47228de` (artifact ID `14761113734`). A successful AAR build does not clear the GPL/LGPL/MPL distribution obligations, integrate an Xray runtime adapter, or prove traffic.
+- CI log warnings include the emulator console startup warning (the instrumentation task nevertheless completed successfully), native-library strip warnings for the currently packaged WireGuard AAR libraries, and GitHub Actions Node.js 20 deprecation notices. These are recorded as warnings, not failed checks; native-library packaging still needs source/AAR inventory review.
+- Signed-release jobs were **skipped by design** for the PR event. No production-signed APK, physical-device VPN test, runtime FD-leak test, DNS/IP leak test, or network-handover test was produced by these runs.
+- PR #4 remains Draft/open/unmerged. Stable Production remains **BLOCKED**.
