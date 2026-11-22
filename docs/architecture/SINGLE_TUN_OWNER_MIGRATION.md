@@ -117,3 +117,24 @@ Reviewed the complete api-android.go and GoBackend.java files at the exact pinne
 - Repeated start/stop, cancellation during startup, process death, and Binder rejection must preserve generation ownership and never release the central TUN lease before cleanup acknowledgement.
 
 These fixes belong in a minimal pinned-source fork and wrapper review. Do not patch the upstream AAR through reflection, do not introduce a second VpnService, and do not remove the current AAR until the replacement path is built and acceptance-tested.
+
+## 10. UAPI listener descriptor ownership audit (2026-11-22)
+
+Reviewed pinned upstream `wireguard-go` commit `f333402bd9cb`, file `ipc/uapi_linux.go` (blob `<verify-from-upstream-tree>`), together with Android `api-android.go`.
+
+### Confirmed descriptor leak on successful UAPI listener creation
+
+- `ipc.UAPIListen(name, file)` calls Go standard-library `net.FileListener(file)`. That API creates a listener using a duplicated descriptor; the caller retains ownership of the original `*os.File` and must close it.
+- `wgTurnOn` retains the original `uapiFile` only as a local variable. On successful listener creation, it does not close `uapiFile` or store it in `TunnelHandle`.
+- Normal `wgTurnOff` closes `handle.uapi`, which closes the listener's descriptor, but it has no reference to the original `uapiFile`. Therefore a successful start/stop cycle leaks the original UAPI file descriptor.
+- This is separate from the previously recorded nil-pointer failure path. Fixing only the nil guard does not fix this leak.
+
+### Required minimal fix and regression coverage
+
+1. After `UAPIListen` succeeds, close the original `uapiFile` immediately and set the local to nil; the returned listener owns its independent descriptor.
+2. If closing the original file reports an error, close the newly created listener, close the WireGuard device, and fail startup without registering a handle.
+3. Audit every `UAPIListen` failure branch in the pinned `ipc/uapi_linux.go`: once `net.FileListener` has succeeded, later inotify setup failures must close the listener and any created inotify descriptor before returning.
+4. On `device.Up()` failure and handle exhaustion, close the listener (when present), close any still-owned original file (when present), and close the device exactly once.
+5. Add repeated start/stop FD-count regression tests, plus fault-injection tests for `net.FileListener`, inotify init/watch, and device startup failures. A passing Go unit test alone does not replace Android process FD-count instrumentation.
+
+No upstream runtime code has been patched by this audit. The WireGuard fork remains unimplemented, and this finding must be fixed and tested before claiming descriptor-clean lifecycle or central TUN readiness.
