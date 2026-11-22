@@ -49,6 +49,16 @@ class RecoveryAttemptGate(
     @Synchronized
     fun tryStart(): RecoveryAttemptToken? {
         if (interrupted || inFlight != null || started >= maxAttempts) return null
+        // Persisted state can be corrupted or manually restored. Never allow Long
+        // overflow to wrap a generation and make an old callback appear current.
+        if (generation == Long.MAX_VALUE) {
+            interrupted = true
+            started = maxAttempts
+            runCatching {
+                store?.write(PersistedRecoveryAttemptState(started, generation, false, true))
+            }
+            return null
+        }
         val token = RecoveryAttemptToken(generation + 1, started + 1)
         val next = PersistedRecoveryAttemptState(token.attempt, token.generation, true, false)
         if (store?.let { runCatching { it.write(next) }.getOrDefault(false) } == false) return null
