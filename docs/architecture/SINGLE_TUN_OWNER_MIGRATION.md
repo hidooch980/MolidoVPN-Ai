@@ -120,7 +120,7 @@ These fixes belong in a minimal pinned-source fork and wrapper review. Do not pa
 
 ## 10. UAPI listener descriptor ownership audit (2026-11-22)
 
-Reviewed pinned upstream `wireguard-go` commit `f333402bd9cb`, file `ipc/uapi_linux.go` (blob `<verify-from-upstream-tree>`), together with Android `api-android.go`.
+Reviewed pinned upstream `wireguard-go` commit `f333402bd9cb`, file `ipc/uapi_linux.go` (blob ``fddded0c99dd7fdd59843eb88e7d7a8bacd517b4``), together with Android `api-android.go`.
 
 ### Confirmed descriptor leak on successful UAPI listener creation
 
