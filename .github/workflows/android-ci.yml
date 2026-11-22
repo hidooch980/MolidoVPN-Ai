@@ -223,7 +223,7 @@ jobs:
 
             # Retry only repository/dependency transport failures. Compilation,
             # assertion, installation, and instrumentation failures remain hard failures.
-            if ! grep -Eiq "Could not (find|GET|HEAD)|Could not resolve|Temporary failure|Connection reset|Read timed out|UnknownHostException|Received status code (429|5[0-9][0-9])|status code (429|5[0-9][0-9])" "$log_file"; then
+            if ! grep -Eiq "Could not resolve .*?(unknown host|temporary failure|connection)|Temporary failure|Connection reset|Read timed out|UnknownHostException|Received status code (429|5[0-9][0-9])|status code (429|5[0-9][0-9])" "$log_file"; then
               echo "Instrumentation failed for a non-repository reason; not retrying."
               exit "$result"
             fi
