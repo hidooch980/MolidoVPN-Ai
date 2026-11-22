@@ -68,7 +68,7 @@ class WireGuardEngineAdapter(
             Config.parse(ByteArrayInputStream(encoded)).also {
                 require(it.peers.isNotEmpty()) { "WireGuard configuration must contain at least one peer" }
             }
-        } catch (failure: Throwable) {
+        } catch (failure: Exception) {
             throw EngineStartException(
                 message = "WireGuard configuration rejected before backend startup",
                 cleanupSession = null,
