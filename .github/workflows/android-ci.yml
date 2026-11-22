@@ -5,6 +5,7 @@ on:
     branches:
       - development/molido-vpn-ai-from-scratch
       - feature/optional-warp-wireguard-enrollment
+      - feature/wireguard-runtime-diagnostics
   pull_request:
     branches:
       - development/molido-vpn-ai-from-scratch
