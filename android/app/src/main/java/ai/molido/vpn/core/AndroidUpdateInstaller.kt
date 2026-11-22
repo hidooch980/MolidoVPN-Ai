@@ -122,21 +122,22 @@ class AndroidUpdateInstaller(
                 confirmation.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 try {
                     appContext.startActivity(confirmation)
-                    check(
-                        preferences.edit()
-                            .putString(KEY_LAST_RESULT, "WAITING_FOR_USER_CONFIRMATION")
-                            .commit()
-                    ) { "Unable to persist update confirmation state" }
                 } catch (_: Exception) {
-                    // A failed confirmation launch must not leave an unfinishable install
-                    // session blocking every later update. Keep the pending marker unless
-                    // PackageInstaller confirms that the session was abandoned.
+                    // Only a failed launch justifies abandoning the session. Once Android
+                    // accepted the confirmation activity, a SharedPreferences write failure
+                    // must NOT cancel the user's in-progress installation.
                     if (abandonSession(sessionId, null)) {
                         clearPending(sessionId, "USER_CONFIRMATION_LAUNCH_FAILED")
                     } else {
                         markCleanupPending(sessionId, "USER_CONFIRMATION_CLEANUP_PENDING")
                     }
+                    return
                 }
+                // This is diagnostic state only. If persistence fails, retain the pending
+                // session marker and let PackageInstaller deliver the terminal callback.
+                preferences.edit()
+                    .putString(KEY_LAST_RESULT, "WAITING_FOR_USER_CONFIRMATION")
+                    .commit()
             }
             PackageInstaller.STATUS_SUCCESS -> {
                 val expected = preferences.getLong(KEY_PENDING_VERSION, 0L)
