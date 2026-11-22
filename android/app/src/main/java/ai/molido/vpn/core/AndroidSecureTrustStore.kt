@@ -16,9 +16,9 @@ import javax.crypto.spec.GCMParameterSpec
 
 /**
  * Encrypts pinned public keys and monotonic version counters at rest with an
- * Android Keystore AES-GCM key. Each value is authenticated against its storage
- * purpose so ciphertext cannot be swapped between trust keys or rollback counters.
- * Initial key pinning must be provisioned out of band.
+ * Android Keystore AES-GCM key. Existing preference names and ciphertext format
+ * are preserved for upgrade compatibility. Initial key pinning is provisioned
+ * out of band; decryption never silently creates a replacement key.
  */
 class AndroidSecureTrustStore(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
@@ -57,7 +57,7 @@ class AndroidSecureTrustStore(context: Context) {
         if (existing != null) {
             val ciphertext = Base64.decode(existing, Base64.NO_WRAP)
             val prior = try {
-                decrypt(ciphertext, name)
+                decrypt(ciphertext)
             } finally {
                 ciphertext.fill(0)
             }
@@ -68,7 +68,7 @@ class AndroidSecureTrustStore(context: Context) {
             }
             return
         }
-        val encrypted = encrypt(encoded, name)
+        val encrypted = encrypt(encoded)
         try {
             check(preferences.edit().putString(name, Base64.encodeToString(encrypted, Base64.NO_WRAP)).commit()) {
                 "Unable to persist pinned trust key"
@@ -92,7 +92,7 @@ class AndroidSecureTrustStore(context: Context) {
             ?: throw IllegalStateException("Required trust key is not provisioned")
         val ciphertext = Base64.decode(stored, Base64.NO_WRAP)
         return try {
-            decrypt(ciphertext, name)
+            decrypt(ciphertext)
         } finally {
             ciphertext.fill(0)
         }
@@ -105,13 +105,13 @@ class AndroidSecureTrustStore(context: Context) {
         val stored = preferences.getString(name, null) ?: return 0L
         val ciphertext = Base64.decode(stored, Base64.NO_WRAP)
         val bytes = try {
-            decrypt(ciphertext, name)
+            decrypt(ciphertext)
         } finally {
             ciphertext.fill(0)
         }
         return try {
             require(bytes.size == java.lang.Long.BYTES) { "Stored monotonic counter is malformed" }
-            java.nio.ByteBuffer.wrap(bytes).long.also { require(it >= 0) }
+            ByteBuffer.wrap(bytes).long.also { require(it >= 0) }
         } finally {
             bytes.fill(0)
         }
@@ -123,7 +123,7 @@ class AndroidSecureTrustStore(context: Context) {
         require(value > current) { "Rollback or duplicate revision rejected" }
         val plaintext = ByteBuffer.allocate(java.lang.Long.BYTES).putLong(value).array()
         val encrypted = try {
-            encrypt(plaintext, name)
+            encrypt(plaintext)
         } finally {
             plaintext.fill(0)
         }
@@ -136,16 +136,10 @@ class AndroidSecureTrustStore(context: Context) {
         }
     }
 
-    private fun encrypt(plain: ByteArray, purpose: String): ByteArray {
+    private fun encrypt(plain: ByteArray): ByteArray {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, encryptionKey())
-        val aad = associatedData(purpose)
-        val encrypted = try {
-            cipher.updateAAD(aad)
-            cipher.doFinal(plain)
-        } finally {
-            aad.fill(0)
-        }
+        val encrypted = cipher.doFinal(plain)
         return try {
             cipher.iv + encrypted
         } finally {
@@ -153,11 +147,10 @@ class AndroidSecureTrustStore(context: Context) {
         }
     }
 
-    private fun decrypt(encoded: ByteArray, purpose: String): ByteArray {
+    private fun decrypt(encoded: ByteArray): ByteArray {
         require(encoded.size > GCM_IV_BYTES + GCM_TAG_BYTES) { "Stored trust data is malformed" }
         val iv = encoded.copyOfRange(0, GCM_IV_BYTES)
         val ciphertext = encoded.copyOfRange(GCM_IV_BYTES, encoded.size)
-        val aad = associatedData(purpose)
         try {
             val cipher = Cipher.getInstance(TRANSFORMATION)
             cipher.init(
@@ -165,17 +158,12 @@ class AndroidSecureTrustStore(context: Context) {
                 encryptionKey(createIfMissing = false),
                 GCMParameterSpec(GCM_TAG_BITS, iv)
             )
-            cipher.updateAAD(aad)
             return cipher.doFinal(ciphertext)
         } finally {
             iv.fill(0)
             ciphertext.fill(0)
-            aad.fill(0)
         }
     }
-
-    private fun associatedData(purpose: String): ByteArray =
-        "$AAD_PREFIX:$purpose".toByteArray(Charsets.UTF_8)
 
     private fun encryptionKey(createIfMissing: Boolean = true): SecretKey {
         val store = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
@@ -211,6 +199,5 @@ class AndroidSecureTrustStore(context: Context) {
         const val UPDATE_KEY = "update_public_key"
         const val CONFIG_REVISION = "configuration_revision"
         const val INSTALLED_VERSION = "installed_version_code"
-        const val AAD_PREFIX = "molido-trust-store-v1"
     }
 }
