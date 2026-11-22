@@ -150,3 +150,14 @@ PR #4 remains **Draft / open / unmerged**. Keep it Draft until the central TUN m
 - CI log warnings include the emulator console startup warning (the instrumentation task nevertheless completed successfully), native-library strip warnings for the currently packaged WireGuard AAR libraries, and GitHub Actions Node.js 20 deprecation notices. These are recorded as warnings, not failed checks; native-library packaging still needs source/AAR inventory review.
 - Signed-release jobs were **skipped by design** for the PR event. No production-signed APK, physical-device VPN test, runtime FD-leak test, DNS/IP leak test, or network-handover test was produced by these runs.
 - PR #4 remains Draft/open/unmerged. Stable Production remains **BLOCKED**.
+
+
+## Latest source-integration audit — 2026-11-22
+
+- Current PR head at this documentation update: d687c81d70846d4aa5359700f01c7f3856d212dd. PR #4 remains Draft/open/unmerged.
+- Re-inspected pinned WireGuard Android tag 1.0.20260102 Java backend, JNI C exports and Android Go entry point. Exact source blob IDs and findings are recorded in SINGLE_TUN_OWNER_MIGRATION.md section 11.
+- Confirmed a further security-ordering defect: upstream Java calls native wgTurnOn, which runs device.Up(), before it calls VpnService.protect() on IPv4/IPv6 sockets. It also ignores protect() boolean results and does not reject negative socket FDs. A post-start check cannot prove protection-before-traffic. Replacement must protect sockets during bind/creation before packet transmission is possible and fail closed on rejection.
+- Confirmed JNI exports are named specifically for GoBackend. A new Kotlin wrapper class alone will not resolve these symbols; explicit JNI registration/export changes and proof of the intended .so inside the APK are required.
+- The current CI APK still packages the AAR-provided libwg-go.so, libwg-quick.so and libwg.so. The separate Go-only source build has not been integrated into the APK. This remains a hard blocker for claiming the patched source is running in the app.
+- No production code was changed in this audit because a superficial wrapper would not close the protection-ordering or JNI-binding gaps. The current upstream VPN service and AAR are retained; no second VpnService, merge, release or production deployment was performed.
+- Next implementation gate: design and test the native socket-bind protection callback plus JNI binding and APK native-library substitution as one coherent WireGuard backend change; only then proceed to central VpnService and authenticated Binder/PFD transfer.
