@@ -185,7 +185,7 @@ class MolidoVpnApplication : Application() {
         val token = vpnSessions.beginRecoveryAttempt()
         if (token == null) {
             synchronized(recoveryLock) { recoveryScheduled = false }
-            diagnostics.record("RECOVERY_LIMIT_REACHED", "No bounded recovery attempt is available")
+            diagnostics.record("RECOVERY_LIMIT_REACHED", "No bounded recovery attempt is available", System.currentTimeMillis())
             return
         }
         synchronized(recoveryLock) { pendingRecoveryToken = token }
@@ -195,7 +195,7 @@ class MolidoVpnApplication : Application() {
             if (plan == null || plan.action == RecoveryAction.NONE || plan.action == RecoveryAction.STOP_RETRIES) {
                 finishRecoveryAttempt(token, connected = false)
             } else if (plan.action == RecoveryAction.WAIT_FOR_NETWORK) {
-                diagnostics.record("RECOVERY_WAITING_FOR_NETWORK", "Previous session cleaned; waiting for fresh validated connectivity")
+                diagnostics.record("RECOVERY_WAITING_FOR_NETWORK", "Previous session cleaned; waiting for fresh validated connectivity", System.currentTimeMillis())
                 resumePendingRecoveryWhenNetworkValidated()
             } else {
                 scheduleRecoveryConnect(token, plan.delayMillis)
@@ -228,7 +228,7 @@ class MolidoVpnApplication : Application() {
                 if (stillPending) {
                     if (latestNetworkAssessment().status != ai.molido.vpn.core.NetworkAssessmentStatus.VALIDATED) {
                         synchronized(recoveryLock) { recoveryScheduled = false }
-                        diagnostics.record("RECOVERY_RECHECK_NETWORK", "Network changed before retry; waiting for validation")
+                        diagnostics.record("RECOVERY_RECHECK_NETWORK", "Network changed before retry; waiting for validation", System.currentTimeMillis())
                     } else {
                         val configuration = synchronized(recoveryLock) {
                             recoveryConfiguration?.concatToString()
@@ -250,7 +250,7 @@ class MolidoVpnApplication : Application() {
 
     private fun finishRecoveryAttempt(token: RecoveryAttemptToken, connected: Boolean) {
         val persisted = vpnSessions.completeRecoveryAttempt(token, connected)
-        if (!persisted) diagnostics.record("RECOVERY_STATE_PERSIST_FAILED", "Retry state could not be committed; automatic retries remain fail-closed")
+        if (!persisted) diagnostics.record("RECOVERY_STATE_PERSIST_FAILED", "Retry state could not be committed; automatic retries remain fail-closed", System.currentTimeMillis())
         synchronized(recoveryLock) {
             if (pendingRecoveryToken == token) pendingRecoveryToken = null
             recoveryScheduled = false
@@ -258,7 +258,8 @@ class MolidoVpnApplication : Application() {
         diagnostics.record(
             if (connected) "RECOVERY_RECONNECTED" else "RECOVERY_ATTEMPT_FINISHED",
             if (connected) "WireGuard session re-entered RUNNING after validated network and bounded retry"
-            else "Recovery attempt ended without a confirmed RUNNING session"
+            else "Recovery attempt ended without a confirmed RUNNING session",
+            System.currentTimeMillis()
         )
     }
 
