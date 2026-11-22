@@ -51,7 +51,7 @@ class RecoveryAttemptGate(
         if (interrupted || inFlight != null || started >= maxAttempts) return null
         val token = RecoveryAttemptToken(generation + 1, started + 1)
         val next = PersistedRecoveryAttemptState(token.attempt, token.generation, true, false)
-        if (store != null && !runCatching { store.write(next) }.getOrDefault(false)) return null
+        if (store?.let { runCatching { it.write(next) }.getOrDefault(false) } == false) return null
         generation = token.generation
         started = token.attempt
         inFlight = token
@@ -63,7 +63,7 @@ class RecoveryAttemptGate(
         if (inFlight != token) return false
         val nextStarted = if (connected) 0 else started
         val next = PersistedRecoveryAttemptState(nextStarted, generation, false, false)
-        if (store != null && !runCatching { store.write(next) }.getOrDefault(false)) return false
+        if (store?.let { runCatching { it.write(next) }.getOrDefault(false) } == false) return false
         inFlight = null
         started = nextStarted
         return true
