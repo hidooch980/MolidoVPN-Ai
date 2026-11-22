@@ -202,6 +202,11 @@ class MolidoVpnApplication : Application() {
                 synchronized(recoveryLock) { recoveryScheduled = false }
                 if (plan == null || plan.action == RecoveryAction.NONE || plan.action == RecoveryAction.STOP_RETRIES) {
                     finishRecoveryAttempt(token, connected = false)
+                    // A failed cleanup retains the FAILED session and lease. Retry
+                    // cleanup only through the same persisted bounded-attempt gate.
+                    if (vpnSessions.snapshot().state == SessionState.FAILED) {
+                        scheduleAutomaticRecovery()
+                    }
                 } else if (plan.action == RecoveryAction.WAIT_FOR_NETWORK) {
                     diagnostics.record("RECOVERY_WAITING_FOR_NETWORK", "Previous session cleaned; waiting for fresh validated connectivity", System.currentTimeMillis())
                     resumePendingRecoveryWhenNetworkValidated()
