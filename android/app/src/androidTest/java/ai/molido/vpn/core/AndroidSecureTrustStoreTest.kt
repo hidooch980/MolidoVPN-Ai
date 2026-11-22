@@ -148,6 +148,19 @@ class AndroidSecureTrustStoreTest {
     }
 
     @Test
+    fun invalidPinnedPublicKeyIsRejectedBeforePersistenceOrKeystoreCreation() {
+        try {
+            store.pinControlPlanePublicKey(byteArrayOf(0x01, 0x02, 0x03))
+            fail("Malformed X.509 public key must be rejected")
+        } catch (_: IllegalArgumentException) {
+            // expected
+        }
+
+        assertNull(preferences().getString(CONTROL_KEY, null))
+        assertFalse(keyStore().containsAlias(KEY_ALIAS))
+    }
+
+    @Test
     fun missingKeystoreKeyFailsClosedWithoutGeneratingReplacement() {
         store.pinControlPlanePublicKey(generatePublicKey().encoded)
         assertTrue(keyStore().containsAlias(KEY_ALIAS))
