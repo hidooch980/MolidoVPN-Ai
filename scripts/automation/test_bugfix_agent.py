@@ -270,15 +270,13 @@ class BugFixAgentClassificationTests(unittest.TestCase):
         self.assertIsNone(redirected.get_header("Authorization"))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class PatchPolicyTests(unittest.TestCase):
     def _plan(self, path="scripts/automation/fix_rule.py", additions=3, deletions=1):
         return {
             "files": [{"path": path, "additions": additions, "deletions": deletions}],
-            "diff": (f"diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n"
+            "diff": (f"diff --git a/{path} b/{path}\nindex 1111111..2222222 100644\n"
+                     + f"--- a/{path}\n+++ b/{path}\n"
+                     + f"@@ -1,{deletions} +1,{additions} @@\n"
                      + "".join("+added\n" for _ in range(additions))
                      + "".join("-removed\n" for _ in range(deletions))),
         }
@@ -346,9 +344,46 @@ class PatchPolicyTests(unittest.TestCase):
         p["diff"] = p["diff"].replace("--- a/", "--- x/", 1)
         self.assertEqual(validate_patch_plan(p)[1], "malformed_diff_headers")
 
+
+    def test_rejects_diff_git_header_path_mismatch(self):
+        from scripts.automation.patch_policy import validate_patch_plan
+        p = self._plan()
+        p["diff"] = p["diff"].replace("diff --git a/scripts/automation/fix_rule.py b/scripts/automation/fix_rule.py",
+                                      "diff --git a/scripts/automation/other.py b/scripts/automation/other.py")
+        self.assertEqual(validate_patch_plan(p)[1], "diff_paths_mismatch")
+
+    def test_rejects_missing_hunk_header(self):
+        from scripts.automation.patch_policy import validate_patch_plan
+        p = self._plan()
+        p["diff"] = "\\n".join(line for line in p["diff"].splitlines()
+                                 if not line.startswith("@@ "))
+        self.assertEqual(validate_patch_plan(p)[1], "malformed_diff_hunk")
+
+    def test_rejects_hunk_range_that_does_not_match_body(self):
+        from scripts.automation.patch_policy import validate_patch_plan
+        p = self._plan()
+        p["diff"] = p["diff"].replace("@@ -1,1 +1,3 @@", "@@ -1,2 +1,3 @@")
+        self.assertEqual(validate_patch_plan(p)[1], "malformed_diff_hunk")
+
+    def test_rejects_rename_and_mode_change_operations(self):
+        from scripts.automation.patch_policy import validate_patch_plan
+        p = self._plan()
+        p["diff"] = p["diff"].replace("index 1111111..2222222 100644",
+                                      "rename from scripts/automation/fix_rule.py")
+        self.assertEqual(validate_patch_plan(p)[1], "unsupported_file_operation")
+
+    def test_rejects_ambiguous_whitespace_paths(self):
+        from scripts.automation.patch_policy import validate_patch_plan
+        self.assertEqual(validate_patch_plan(self._plan("scripts/automation/bad name.py"))[1],
+                         "invalid_path")
+
     def test_rejects_unknown_fields_and_non_object(self):
         from scripts.automation.patch_policy import validate_patch_plan
         self.assertEqual(validate_patch_plan([])[1], "plan_must_be_object")
         p = self._plan()
         p["approved"] = True
         self.assertEqual(validate_patch_plan(p)[1], "unexpected_or_missing_fields")
+
+
+if __name__ == "__main__":
+    unittest.main()
