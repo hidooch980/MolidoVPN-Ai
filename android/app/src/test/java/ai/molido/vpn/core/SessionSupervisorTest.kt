@@ -214,7 +214,7 @@ class SessionSupervisorTest {
 
 
     @Test
-    fun lateFailureCallbackDoesNotRegressStoppingAfterProcessDeath() {
+    fun failedStopAfterEngineDeathRemainsRetryableUntilServiceClosesTun() {
         val coordinator = TunOwnershipCoordinator()
         val supervisor = SessionSupervisor(coordinator)
 
@@ -225,10 +225,14 @@ class SessionSupervisorTest {
         assertTrue(supervisor.beginStopping(EngineSlot.V2RAY_XRAY))
         assertEquals(SessionState.STOPPING, supervisor.snapshot().state)
 
-        // A death/failure callback can race with an already-started stop operation.
+        // Process death makes service-side descriptor closure mandatory. A failed
+        // stop transitions to FAILED so a later cleanup attempt can retry.
         assertTrue(coordinator.reportEngineProcessDeath(lease, 10423))
         assertTrue(supervisor.markFailed(EngineSlot.V2RAY_XRAY))
+        assertEquals(SessionState.FAILED, supervisor.snapshot().state)
+        assertTrue(supervisor.beginStopping(EngineSlot.V2RAY_XRAY))
         assertEquals(SessionState.STOPPING, supervisor.snapshot().state)
+        assertFalse(supervisor.release(EngineSlot.V2RAY_XRAY))
 
         assertTrue(coordinator.confirmServiceTunClosed(lease))
         assertTrue(supervisor.release(EngineSlot.V2RAY_XRAY))
