@@ -189,4 +189,27 @@ class SessionSupervisorTest {
         assertTrue(supervisor.claim(EngineSlot.WIREGUARD))
     }
 
+
+    @Test
+    fun isolatedEngineDeathDuringStartupCanRollbackOnlyAfterServiceClosesTun() {
+        val coordinator = TunOwnershipCoordinator()
+        val supervisor = SessionSupervisor(coordinator)
+
+        assertTrue(supervisor.claim(EngineSlot.AMNEZIA_WG))
+        val lease = supervisor.tunLeaseFor(EngineSlot.AMNEZIA_WG)!!
+        assertTrue(coordinator.markDescriptorTransferred(lease, 10422))
+
+        // Startup has not been published as RUNNING yet, but the process owns an FD copy.
+        assertTrue(coordinator.reportEngineProcessDeath(lease, 10422))
+        assertTrue(supervisor.markFailed(EngineSlot.AMNEZIA_WG))
+        assertFalse(supervisor.releaseUnstartedReservation(EngineSlot.AMNEZIA_WG))
+        assertFalse(supervisor.claim(EngineSlot.WIREGUARD))
+
+        assertTrue(coordinator.confirmServiceTunClosed(lease))
+        assertTrue(supervisor.releaseUnstartedReservation(EngineSlot.AMNEZIA_WG))
+        assertEquals(SessionState.IDLE, supervisor.snapshot().state)
+        assertEquals(TunLeaseState.IDLE, coordinator.snapshot().state)
+        assertTrue(supervisor.claim(EngineSlot.WIREGUARD))
+    }
+
 }
