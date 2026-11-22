@@ -22,12 +22,28 @@ class VpnSessionController(
     var onSessionStateChanged: ((SessionSnapshot) -> Unit)? = null
         set(value) {
             field = value
-            value?.invoke(snapshot())
+            notifyStateObserver(value, supervisor.snapshot())
         }
 
     private fun publishState() {
-        val current = supervisor.snapshot()
-        onSessionStateChanged?.invoke(current)
+        notifyStateObserver(onSessionStateChanged, supervisor.snapshot())
+    }
+
+    /**
+     * UI observers are outside the VPN lifecycle trust boundary. A broken observer must
+     * never interrupt TUN startup, stop, or ownership release.
+     */
+    private fun notifyStateObserver(
+        observer: ((SessionSnapshot) -> Unit)?,
+        current: SessionSnapshot
+    ) {
+        try {
+            observer?.invoke(current)
+        } catch (_: Exception) {
+            runCatching {
+                record("SESSION_OBSERVER_FAILED", "A session-state observer threw an exception")
+            }
+        }
     }
 
     init {
