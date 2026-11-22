@@ -138,3 +138,28 @@ Reviewed pinned upstream `wireguard-go` commit `f333402bd9cb`, file `ipc/uapi_li
 5. Add repeated start/stop FD-count regression tests, plus fault-injection tests for `net.FileListener`, inotify init/watch, and device startup failures. A passing Go unit test alone does not replace Android process FD-count instrumentation.
 
 No upstream runtime code has been patched by this audit. The WireGuard fork remains unimplemented, and this finding must be fixed and tested before claiming descriptor-clean lifecycle or central TUN readiness.
+
+
+## 11. Pinned JNI binding and socket-protection ordering audit (2026-11-22)
+
+Re-opened the exact upstream tag 1.0.20260102 source files:
+- tunnel/src/main/java/com/wireguard/android/backend/GoBackend.java (blob 196836d278c92ac86db49a131d6f27b27b445403)
+- tunnel/tools/libwg-go/jni.c (blob 7ad94d350a9f1953ab4c5de8dcd374f9512612b9)
+- tunnel/tools/libwg-go/api-android.go (blob d47c5d76cfdef368ae1cdacf805c53acc553a023)
+
+### Additional confirmed findings
+
+1. **Socket protection currently occurs after native engine activation.** The Java backend calls wgTurnOn(...); Go calls device.Up() and returns a live handle; only after that return does Java call service.protect(wgGetSocketV4(...)) and service.protect(wgGetSocketV6(...)). The current sequence therefore does not establish protection-before-traffic. Checking the boolean return alone is insufficient to close this ordering gap. The replacement must arrange protection synchronously as part of socket creation/bind, before the engine can transmit, and must abort startup if either required protection fails.
+2. **The current Java caller ignores both protection booleans and does not validate negative socket FDs before passing them to protect.** This remains an upstream fail-closed defect; no Molido wrapper has fixed it yet.
+3. **JNI symbols are hard-bound to GoBackend class names.** The pinned jni.c exports Java_com_wireguard_android_backend_GoBackend_* symbols. Adding Kotlin/Java external methods under a new Molido class does not bind those symbols automatically. A real wrapper requires an intentional JNI registration/export change and an APK build that packages and loads the resulting native library. Kotlin declarations or a standalone Go-only build do not constitute JNI integration.
+4. **The currently assembled app still packages the AAR native libraries libwg-go.so, libwg-quick.so, and libwg.so.** CI Go-only source build does not replace those APK libraries. The replacement artifact and APK native-library inventory must be explicitly connected and checked before claiming that the app runs the patched fork.
+
+### Acceptance requirements for the next implementation phase
+
+- Define one explicit FD ownership contract across Binder/PFD, Java, JNI and Go for success, failure, cancellation and process death.
+- Add a native-to-Java protection callback or equivalent reviewed socket-bind integration invoked before any packet can leave; validate each FD and require successful protection. Failure must stop/close the native handle and preserve the central TUN lease until cleanup is confirmed.
+- Change JNI registration/exports deliberately and add tests that load the actual Molido wrapper class from the packaged APK. Verify the loaded library symbols and hash against the pinned build artifact.
+- Prove that the APK contains the intended patched native library and does not silently continue loading the unmodified AAR libraries.
+- Add fault-injection tests for missing IPv4/IPv6 socket FDs, callback exceptions, protection rejection, JNI load failure, duplicate close and startup cancellation. Then run Android instrumentation and physical-device traffic/leak tests.
+
+**Status:** source-level integration blocker, not a completed fix. No custom JNI wrapper, protection-before-traffic callback, central service, Binder FD handoff, or patched-fork APK integration is claimed. The existing upstream service remains the only VPN service until a replacement is fully proven.
