@@ -82,22 +82,27 @@ class PlasmaCoreView @JvmOverloads constructor(
 
         // Colors based on session state
         val (glowColor, coreCenterColor, coreEdgeColor) = when (currentState) {
-            SessionState.CONNECTED -> Triple(
+            SessionState.RUNNING -> Triple(
                 Color.argb(80, 16, 185, 129),   // Emerald
                 Color.rgb(52, 211, 153),
                 Color.rgb(6, 95, 70)
             )
-            SessionState.CONNECTING, SessionState.RECONNECTING -> Triple(
+            SessionState.RESERVED -> Triple(
                 Color.argb(90, 6, 182, 212),    // Cyan
                 Color.rgb(56, 189, 248),
                 Color.rgb(79, 70, 229)
             )
-            SessionState.BLOCKED_ERROR, SessionState.OFFLINE_UNAVAILABLE -> Triple(
+            SessionState.STOPPING -> Triple(
+                Color.argb(80, 245, 158, 11),   // Amber
+                Color.rgb(251, 191, 36),
+                Color.rgb(180, 83, 9)
+            )
+            SessionState.FAILED -> Triple(
                 Color.argb(80, 239, 68, 68),    // Red
                 Color.rgb(248, 113, 113),
                 Color.rgb(153, 27, 27)
             )
-            else -> Triple(
+            SessionState.IDLE -> Triple(
                 Color.argb(40, 100, 116, 139),  // Muted Slate
                 Color.rgb(148, 163, 184),
                 Color.rgb(30, 41, 59)
@@ -133,7 +138,7 @@ class PlasmaCoreView @JvmOverloads constructor(
         canvas.restore()
 
         // 3. Floating Particles
-        val particleSpeedMultiplier = if (currentState == SessionState.CONNECTED) 2f else 1f
+        val particleSpeedMultiplier = if (currentState == SessionState.RUNNING) 2f else 1f
         particles.forEach { p ->
             val rad = Math.toRadians((p.angle + rotationAngle * particleSpeedMultiplier).toDouble())
             val px = cx + (maxRadius * p.distRatio) * cos(rad).toFloat()
