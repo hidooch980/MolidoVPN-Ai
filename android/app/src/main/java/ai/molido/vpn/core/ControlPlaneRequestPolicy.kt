@@ -9,7 +9,7 @@ object ControlPlaneRequestPolicy {
     const val MIN_TIMEOUT_MILLIS = 1
     const val MAX_CONNECT_TIMEOUT_MILLIS = 60_000
     const val MAX_READ_TIMEOUT_MILLIS = 120_000
-    private const val VISIBLE_ASCII_TOKEN_RANGE = 0x21..0x7E
+    private val VISIBLE_ASCII_TOKEN_RANGE = 0x21..0x7E
 
     fun validateTimeouts(connectTimeoutMillis: Int, readTimeoutMillis: Int) {
         require(connectTimeoutMillis in MIN_TIMEOUT_MILLIS..MAX_CONNECT_TIMEOUT_MILLIS) {
