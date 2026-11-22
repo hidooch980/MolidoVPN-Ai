@@ -183,3 +183,32 @@ CI/emulator success can prove build and policy behavior only. It cannot replace 
 - TUN FD: **REFERENCE DESIGN IDENTIFIED**; Molido's secure handoff and cleanup ACK are not implemented.
 - WireGuard profile parsing: **candidate test cases only**; no runtime code copied.
 - PR #4 remains Draft and unmerged. This evaluation must not relax any existing release gate.
+
+
+## Finding E — Latest patched ARM64 build and dependency-license evidence (2026-11-22)
+
+Workflow run: [45017363826](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/45017363826), run number 411, PR head commit `18b85d3a99f02d79bfbace6f04b06d52be9e4273`.
+
+- All five principal CI jobs passed: Android Keystore emulator instrumentation, pinned Xray ARM64 AAR build validation, control-plane tests, pinned WireGuard Go-only source build, and Android source validation (unit tests, lint, release-variant assembly validation, and exactly-one-VPN-service manifest assertion).
+- The wrapper patch-transformer tests and patched-wrapper Go lifecycle tests both passed. The Go test command is deliberately scoped to `TestMolido`; this is not a claim that the complete upstream Xray/wrapper integration suite or real network tests passed.
+- Artifact: `xray-android-arm64-build-b3e2d64fd78b16dda4debf8848fa0b8e04185cf2`, artifact ID `14752028831`, expires 2026-11-29.
+- Artifact ZIP SHA-256: `6ad24b7e404888c1500204bbb729a7b1b7eae799b4e1660642ab4932236d2966`.
+- AAR size: 18,465,608 bytes. AAR SHA-256: `b5ddb1314247b5020c3205a2f634871fbe7cf4571bfbf5fcc59d5caa34fb14cb`.
+- Extracted `libgojni.so` SHA-256: `e8dec785c9fb2055637d316f395748df5a5ddc115690702a3c89ade749edf028`. ELF inspection confirms ELF64, little-endian, AArch64, Android API 26, NDK r28c (28.2.13676358). The AAR contains `jni/arm64-v8a/libgojni.so` only; this is an ARM64 CI artifact, not an app-integrated library or signed APK.
+- Build input pins wrapper commit `48f35be868ee247e53a8036e284a8c2f97c80068`, Go 1.26.7, gomobile module `golang.org/x/mobile@v0.0.0-20260217195705-b56b3793a9c4`, NDK 28.2.13676358, Android API 26, and hashes for GeoIP/GeoSite assets.
+
+### License report findings — release remains blocked
+
+The generated `go-licenses` report contains 62 dependency rows and identifies:
+- 21 BSD-3-Clause
+- 18 MIT
+- 13 Apache-2.0
+- 3 BSD-2-Clause
+- 2 LGPL-3.0
+- 2 MPL-2.0
+- 2 GPL-3.0
+- 1 CC0-1.0
+
+The report specifically identifies `github.com/sagernet/sing-shadowsocks` and `github.com/sagernet/sing/common` as GPL-3.0, in addition to LGPL-3.0 wrapper/`juju/ratelimit`, MPL-2.0 Xray-core/`xtls/reality`, and the permissive dependencies. This is a dependency inventory, not a legal compatibility decision. Before distributing the AAR/APK, determine whether each dependency is actually linked into the distributed artifact, whether it can be removed without breaking required functionality, and what source/notice/reciprocal obligations apply. Preserve the exact report and notices with the corresponding build. No redistribution approval is inferred.
+
+**Decision:** wrapper CI and ARM64 artifact validation now pass for this pinned build, but Xray remains **NOT_IMPLEMENTED / NOT_SELECTABLE**. License compatibility, app-owned TUN migration, Binder FD transfer, a real adapter, network/data-plane acceptance, and physical-device stability remain open. Do not register or activate Xray based on this artifact alone.
