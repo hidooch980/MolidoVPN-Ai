@@ -92,3 +92,17 @@ The native integration blocker is narrower than “WireGuard cannot accept an ex
 This source inspection establishes a feasible native FD entry point; it does **not** establish that Molido's wrapper, central service, Binder authentication, socket protection, or cleanup protocol has been implemented. The pinned source tag matching the current AAR remains the required baseline unless a separately reviewed upgrade is approved. No second VPN service may be declared during the transition, and the AAR dependency must not be removed until the replacement is built and tested atomically.
 
 Phase A's upstream FD API inspection is now source-verified. Phase B/C implementation and all runtime/device acceptance gates remain open.
+
+## 8. Verified upstream WireGuard API audit (2026-11-22)
+Reviewed the official `WireGuard/wireguard-android` tag `1.0.20260315`, peeled commit `0856e2ecf7f3cce0e9c9014db3ad7665669adce5`.
+
+Source evidence:
+- `tunnel/src/main/java/com/wireguard/android/backend/GoBackend.java` (blob `1b91aeda2cc8b78fda441b70227bfa25eb02c7a8`): `setStateInternal(UP)` obtains `service.getBuilder()`, configures routes/addresses/DNS/MTU, calls `builder.establish()`, detaches the returned `ParcelFileDescriptor`, and passes the raw FD to `wgTurnOn`. It also calls `service.protect()` for the WireGuard UDP sockets.
+- The same class declares `wgTurnOn(String ifName, int tunFd, String settings)` as a **private static native** method. The public `Backend` interface exposes only tunnel state/statistics/version and `setState(Tunnel, State, Config)`; it has no externally supplied TUN descriptor parameter.
+- `tunnel/tools/libwg-go/jni.c` (blob `7ad94d350a9f1953ab4c5de8dcd374f9512612b9`) bridges that private Java native method to the Go `wgTurnOn(ifname, tun_fd, settings)` symbol.
+
+Decision:
+- The current published AAR API cannot accept a TUN descriptor created by a Molido-owned service. Calling private JNI methods through reflection or hidden hooks is not an acceptable migration.
+- A supported migration therefore requires a source-based, pinned WireGuard integration: preserve the upstream Go engine and license notices, introduce a reviewed public native boundary that accepts the already-owned descriptor, and move Builder/TUN creation plus socket protection into the single Molido VpnService. The new path must not also start `GoBackend.VpnService`.
+- This source audit closes the API-inspection subtask only. It does **not** implement the fork, descriptor handoff, central service, or runtime migration. Build-system, submodule, ABI, license/NOTICE, and reproducibility audits remain required before implementation.
+- Until those steps and device acceptance pass, keep WireGuard on the existing upstream backend-managed service and keep second-engine admission blocked.
