@@ -27,6 +27,36 @@ class VpnSessionControllerTest {
     }
 
     @Test
+    fun throwingUiObserverCannotInterruptConnectOrDisconnect() {
+        val supervisor = SessionSupervisor()
+        val session = FakeSession()
+        val adapter = FakeAdapter(EngineSlot.WIREGUARD, session)
+        val controller = VpnSessionController(supervisor, listOf(adapter))
+
+        controller.onSessionStateChanged = {
+            throw IllegalStateException("simulated UI observer failure")
+        }
+
+        assertTrue(controller.connect(EngineSlot.WIREGUARD, "opaque-profile"))
+        assertEquals(SessionState.RUNNING, controller.snapshot().state)
+        assertTrue(controller.disconnect())
+        assertEquals(1, session.stopCalls)
+        assertEquals(SessionState.IDLE, controller.snapshot().state)
+        assertNull(supervisor.currentOwner())
+    }
+
+    @Test
+    fun throwingUiObserverDuringRegistrationDoesNotEscapeSetter() {
+        val controller = VpnSessionController(SessionSupervisor(), emptyList())
+
+        controller.onSessionStateChanged = {
+            throw IllegalStateException("simulated observer registration failure")
+        }
+
+        assertEquals(SessionState.IDLE, controller.snapshot().state)
+    }
+
+    @Test
     fun unexpectedWireGuardEngineFailureTransitionsRunningSessionToFailed() {
         val supervisor = SessionSupervisor()
         var failureListener: (() -> Unit)? = null
