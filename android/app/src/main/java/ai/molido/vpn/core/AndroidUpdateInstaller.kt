@@ -90,7 +90,11 @@ class AndroidUpdateInstaller(
             if (abandonSession(sessionId, session)) {
                 clearPending(sessionId, "INSTALL_SUBMISSION_FAILED")
             } else {
-                markCleanupPending(sessionId, "INSTALL_SUBMISSION_CLEANUP_PENDING")
+                markCleanupPending(
+                    sessionId,
+                    "INSTALL_SUBMISSION_CLEANUP_PENDING",
+                    manifest.versionCode
+                )
             }
             throw failure
         } finally {
@@ -206,9 +210,19 @@ class AndroidUpdateInstaller(
         }
     }
 
-    private fun markCleanupPending(sessionId: Int, result: String) {
-        if (preferences.getInt(KEY_PENDING_SESSION, NO_SESSION) != sessionId) return
-        preferences.edit().putString(KEY_LAST_RESULT, result).commit()
+    private fun markCleanupPending(
+        sessionId: Int,
+        result: String,
+        versionCode: Long? = null
+    ) {
+        val editor = preferences.edit()
+        if (versionCode != null) {
+            editor.putInt(KEY_PENDING_SESSION, sessionId)
+                .putLong(KEY_PENDING_VERSION, versionCode)
+        } else if (preferences.getInt(KEY_PENDING_SESSION, NO_SESSION) != sessionId) {
+            return
+        }
+        editor.putString(KEY_LAST_RESULT, result).commit()
     }
 
     private fun clearPending(sessionId: Int, result: String): Boolean {
