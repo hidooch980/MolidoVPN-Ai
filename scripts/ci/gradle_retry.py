@@ -12,7 +12,6 @@ from collections import deque
 from typing import Sequence
 
 _TRANSIENT_FAILURES = (
-    re.compile(r"Could not (?:GET|HEAD|find) https?://", re.IGNORECASE),
     re.compile(r"Could not resolve .* because of .*?(?:unknown host|temporary failure|connection)", re.IGNORECASE),
     re.compile(r"Temporary failure in name resolution|UnknownHostException", re.IGNORECASE),
     re.compile(r"Connection reset|Connection refused|Connect timed out|Read timed out", re.IGNORECASE),
