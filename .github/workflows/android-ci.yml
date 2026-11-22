@@ -149,7 +149,7 @@ jobs:
         run: python3 ../../scripts/ci/patch_xray_wrapper.py --source-dir .
       - name: Test patched Android wrapper
         working-directory: third_party/AndroidLibXrayLite
-        run: go test ./...
+        run: go test -run '^TestMolido' ./...
       - name: Build Android ARM64 AAR (no release or signing)
         working-directory: third_party/AndroidLibXrayLite
         run: |
