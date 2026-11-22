@@ -51,6 +51,18 @@ class EngineStartupFailureSignalTest {
     }
 
     @Test
+    fun throwingFailureObserverDoesNotEscapeCallbackThread() {
+        val signal = EngineStartupFailureSignal {
+            throw IllegalStateException("observer failure")
+        }
+
+        signal.markStartupComplete()
+        signal.onDown(intentionalStop = false)
+        // No exception escapes; exactly-once delivery remains consumed.
+        signal.onDown(intentionalStop = false)
+    }
+
+    @Test
     fun downRacingStartupCompletionIsNeverLost() {
         repeat(100) {
             var failures = 0
