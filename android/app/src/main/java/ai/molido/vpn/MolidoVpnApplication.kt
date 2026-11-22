@@ -33,6 +33,7 @@ import ai.molido.vpn.engine.wireguard.WireGuardEngineAdapter
 import ai.molido.vpn.core.AndroidRecoveryAttemptStateStore
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.ThreadLocalRandom
@@ -134,7 +135,9 @@ class MolidoVpnApplication : Application() {
                     "status=${assessment.status};transport=${assessment.transport ?: "unknown"}",
                     System.currentTimeMillis()
                 )
-                onNetworkAssessmentChanged?.invoke()
+                // UI observers are outside the recovery trust boundary. Their failure
+                // must never suppress recovery after a validated network transition.
+                runCatching { onNetworkAssessmentChanged?.invoke() }
                 resumePendingRecoveryWhenNetworkValidated()
             }
         )
@@ -193,17 +196,22 @@ class MolidoVpnApplication : Application() {
             return
         }
         synchronized(recoveryLock) { pendingRecoveryToken = token }
-        vpnExecutor.execute {
-            val plan = runCatching { vpnSessions.prepareRecovery(attempt = token.attempt - 1) }.getOrNull()
-            synchronized(recoveryLock) { recoveryScheduled = false }
-            if (plan == null || plan.action == RecoveryAction.NONE || plan.action == RecoveryAction.STOP_RETRIES) {
-                finishRecoveryAttempt(token, connected = false)
-            } else if (plan.action == RecoveryAction.WAIT_FOR_NETWORK) {
-                diagnostics.record("RECOVERY_WAITING_FOR_NETWORK", "Previous session cleaned; waiting for fresh validated connectivity", System.currentTimeMillis())
-                resumePendingRecoveryWhenNetworkValidated()
-            } else {
-                scheduleRecoveryConnect(token, plan.delayMillis)
+        try {
+            vpnExecutor.execute {
+                val plan = runCatching { vpnSessions.prepareRecovery(attempt = token.attempt - 1) }.getOrNull()
+                synchronized(recoveryLock) { recoveryScheduled = false }
+                if (plan == null || plan.action == RecoveryAction.NONE || plan.action == RecoveryAction.STOP_RETRIES) {
+                    finishRecoveryAttempt(token, connected = false)
+                } else if (plan.action == RecoveryAction.WAIT_FOR_NETWORK) {
+                    diagnostics.record("RECOVERY_WAITING_FOR_NETWORK", "Previous session cleaned; waiting for fresh validated connectivity", System.currentTimeMillis())
+                    resumePendingRecoveryWhenNetworkValidated()
+                } else {
+                    scheduleRecoveryConnect(token, plan.delayMillis)
+                }
             }
+        } catch (_: RejectedExecutionException) {
+            diagnostics.record("RECOVERY_EXECUTOR_REJECTED", "VPN control executor rejected recovery preparation", System.currentTimeMillis())
+            finishRecoveryAttempt(token, connected = false)
         }
     }
 
@@ -225,34 +233,49 @@ class MolidoVpnApplication : Application() {
         }
         val jitteredDelay = (baseDelayMillis * ThreadLocalRandom.current().nextDouble(0.8, 1.2))
             .toLong().coerceAtMost(ResilienceRecoveryCore.MAX_DELAY_MILLIS)
-        recoveryExecutor.schedule({
-            vpnExecutor.execute retryTask@{
-                val stillPending = synchronized(recoveryLock) {
-                    pendingRecoveryToken == token && recoveryConfiguration != null
-                }
-                if (stillPending) {
-                    if (latestNetworkAssessment().status != ai.molido.vpn.core.NetworkAssessmentStatus.VALIDATED ||
-                        AdaptivePathPolicyCore.evaluate(latestNetworkAssessment(), selectedNetworkPolicy.get()).decision != PathDecision.ALLOW
-                    ) {
-                        synchronized(recoveryLock) { recoveryScheduled = false }
-                        diagnostics.record("RECOVERY_RECHECK_NETWORK", "Network changed before retry; waiting for validation", System.currentTimeMillis())
-                    } else {
-                        val configuration = synchronized(recoveryLock) {
-                            recoveryConfiguration?.concatToString()
+        try {
+            recoveryExecutor.schedule({
+                try {
+                    vpnExecutor.execute retryTask@{
+                        val stillPending = synchronized(recoveryLock) {
+                            pendingRecoveryToken == token && recoveryConfiguration != null
                         }
-                        val connected = try {
-                            configuration != null && vpnSessions.connect(EngineSlot.WIREGUARD, configuration)
-                        } catch (_: Throwable) {
-                            false
-                        }
-                        finishRecoveryAttempt(token, connected)
-                        if (!connected && vpnSessions.snapshot().state == SessionState.FAILED) {
-                            scheduleAutomaticRecovery()
+                        if (stillPending) {
+                            // Use one immutable assessment for both validation and policy
+                            // evaluation; a network transition cannot split the two checks.
+                            val assessment = latestNetworkAssessment()
+                            if (assessment.status != ai.molido.vpn.core.NetworkAssessmentStatus.VALIDATED ||
+                                AdaptivePathPolicyCore.evaluate(assessment, selectedNetworkPolicy.get()).decision != PathDecision.ALLOW
+                            ) {
+                                synchronized(recoveryLock) {
+                                    if (pendingRecoveryToken == token) recoveryScheduled = false
+                                }
+                                diagnostics.record("RECOVERY_RECHECK_NETWORK", "Network changed before retry; waiting for validation", System.currentTimeMillis())
+                            } else {
+                                val configuration = synchronized(recoveryLock) {
+                                    recoveryConfiguration?.concatToString()
+                                }
+                                val connected = try {
+                                    configuration != null && vpnSessions.connect(EngineSlot.WIREGUARD, configuration)
+                                } catch (_: Throwable) {
+                                    false
+                                }
+                                finishRecoveryAttempt(token, connected)
+                                if (!connected && vpnSessions.snapshot().state == SessionState.FAILED) {
+                                    scheduleAutomaticRecovery()
+                                }
+                            }
                         }
                     }
+                } catch (_: RejectedExecutionException) {
+                    diagnostics.record("RECOVERY_EXECUTOR_REJECTED", "VPN control executor rejected a scheduled retry", System.currentTimeMillis())
+                    finishRecoveryAttempt(token, connected = false)
                 }
-            }
-        }, jitteredDelay, TimeUnit.MILLISECONDS)
+            }, jitteredDelay, TimeUnit.MILLISECONDS)
+        } catch (_: RejectedExecutionException) {
+            diagnostics.record("RECOVERY_EXECUTOR_REJECTED", "Recovery scheduler rejected a retry", System.currentTimeMillis())
+            finishRecoveryAttempt(token, connected = false)
+        }
     }
 
     private fun finishRecoveryAttempt(token: RecoveryAttemptToken, connected: Boolean) {
