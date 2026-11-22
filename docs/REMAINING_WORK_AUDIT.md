@@ -134,3 +134,36 @@ Stable Production remains blocked until:
 7. The release artifact is reproducible, signed, verified and explicitly approved.
 
 Do not merge PR #4 or publish any APK before all gates pass. No VPS, dedicated server, PC, paid service or unapproved infrastructure is assumed for the current GitHub-only source/CI work.
+
+
+## 6. Latest verified status — 2026-11-22
+
+Audit update basis: branch `feature/wireguard-runtime-diagnostics`, head commit `61d707c673d29fe9933520eaed65705ff55a09ee`, CI run #355 (`45004213465`).
+
+- CI #355 completed with overall conclusion **success** on the current branch head.
+- Android source validation: PASS — Gradle retry-classification tests, Android unit tests, Android lint, and release-variant assembly all completed successfully.
+- Android Keystore instrumentation on API 35 emulator: PASS — emulator boot, hardware-acceleration/KVM gate, and connected instrumentation task completed successfully.
+- Self-hosted control-plane tests: PASS — bug-fix-agent classification tests and backend pytest suite completed successfully.
+- Pinned WireGuard Go-only source build: PASS.
+- Signed-release verification: SKIPPED because this was a pull-request event. No signed production APK or certificate fingerprint was produced by this run.
+- Autonomous CI bug-fix agent: SKIPPED; this workflow job is not evidence of autonomous source-code repair.
+- The preceding CI #353 failed on an invalid Kotlin `const val IntRange` declaration. Commit `61d707c` changes it to a runtime `private val`; CI #355 confirms the corrected head passes the configured checks.
+
+### Current implementation boundary
+
+- The only registered runtime engine remains WireGuard.
+- WireGuard still uses the upstream merged `GoBackend.VpnService`; the app-owned central `MolidoVpnService`, descriptor broker, authenticated engine IPC, and service-owned TUN lifecycle are **not implemented**.
+- The exact pinned upstream Go entry point accepts an externally supplied TUN FD, but the published AAR's public Android backend API does not expose it. A pinned source-built wrapper and its failure-path audit are required; do not substitute reflection/private AAR hooks.
+- Existing coordinator unit tests cover contention, generation tokens, wrong PID, process death, cleanup acknowledgement and fail-closed lease retention. They do not prove real Binder FD transfer or kernel descriptor lifecycle.
+- PR #4 remains open, Draft and unmerged. Do not merge or release while P0/P1/P2 and physical-device acceptance gates remain open.
+
+### Next execution order
+
+1. Complete the pinned WireGuard source-wrapper design and reviewed patch set, including nullable/idempotent native cleanup and socket-protection failure paths.
+2. Implement the app-owned central VPN service and authenticated, versioned Binder protocol with generation/session/UID/PID checks.
+3. Add real descriptor-handoff instrumentation, exact-once close, cancellation, partial-start, Binder death, stale-message and concurrent start/stop tests.
+4. Migrate WireGuard atomically to the source-built backend; assert the merged manifest contains exactly one app-owned VPN service.
+5. Repeat all CI checks and then run authorized physical-device data-plane, DNS, IPv4/IPv6, leak and network-handover acceptance.
+6. Complete SBOM/license/dependency/native ABI review and signed artifact verification on the approved base-branch workflow.
+
+The CI pass raises confidence in the current source and emulator checks; it does not change the architecture or production release gates above.
