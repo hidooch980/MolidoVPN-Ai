@@ -83,16 +83,13 @@ class WireGuardEngineAdapter(
             tunOwnership.isReserved(lease)
         ) { "WireGuard received an invalid or stale shared TUN lease" }
 
-        val startupComplete = AtomicBoolean(false)
         val intentionalStop = AtomicBoolean(false)
+        val startupSignal = EngineStartupFailureSignal { failureListener?.invoke() }
         val tunnel = object : Tunnel {
             override fun getName(): String = TUNNEL_NAME
             override fun onStateChange(newState: Tunnel.State) {
-                if (newState == Tunnel.State.DOWN &&
-                    startupComplete.get() &&
-                    !intentionalStop.get()
-                ) {
-                    failureListener?.invoke()
+                if (newState == Tunnel.State.DOWN) {
+                    startupSignal.onDown(intentionalStop.get())
                 }
             }
         }
@@ -137,7 +134,7 @@ class WireGuardEngineAdapter(
             check(tunOwnership.markBackendActive(lease)) {
                 "Shared TUN coordinator refused WireGuard activation"
             }
-            startupComplete.set(true)
+            startupSignal.markStartupComplete()
         } catch (failure: Throwable) {
             var cleanupFailure: Throwable? = null
             try {
