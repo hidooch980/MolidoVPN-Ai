@@ -67,3 +67,28 @@ Migration is NOT IMPLEMENTED. WireGuard remains the only registered adapter and 
 - Instrumentation evidence for descriptor lifecycle and cleanup.
 - Physical-device logs and authorized endpoint observations for real bidirectional traffic, DNS, IPv4/IPv6, network handover, stop, and restart.
 - Exact app commit, device model/Android version, server version, test timestamps, and redacted evidence bundle.
+
+## 8. WireGuard native FD feasibility — source-verified (2026-11-22)
+
+The native integration blocker is narrower than “WireGuard cannot accept an external TUN FD”:
+
+- Upstream `libwg-go/api-android.go` exports `wgTurnOn(interfaceName, tunFd, settings)` and attaches the supplied descriptor with `tun.CreateUnmonitoredTUNFromFD`.
+- On attach failure the Go entry point closes the supplied FD. After successful attach, the Go TUN device owns that descriptor and `wgTurnOff(handle)` closes the device.
+- The Android `GoBackend` wrapper currently hides this capability: it obtains its own `VpnService`, calls `Builder.establish()`, detaches that descriptor, invokes `wgTurnOn`, and protects the returned IPv4/IPv6 UDP socket descriptors.
+- Therefore the supported engineering route is a pinned source-built backend wrapper around the existing native entry point, not reflection or a guessed public AAR API. Keep the native ABI and package/JNI symbols aligned to the exact pinned source revision.
+
+### Required wrapper contract
+
+1. Central `MolidoVpnService` creates and retains the original `ParcelFileDescriptor`.
+2. It passes a duplicated descriptor through authenticated Binder IPC. Never pass the original service-owned descriptor or a raw integer FD.
+3. The isolated WireGuard process invokes the source-built wrapper, which detaches/attaches only its duplicate to the existing native `wgTurnOn` entry point.
+4. The wrapper obtains the WireGuard UDP socket FDs and requests protection from the central service. A missing/invalid socket FD or failed `VpnService.protect(fd)` is a hard startup failure; no unprotected fallback is allowed.
+5. On stop, `wgTurnOff` must return after closing the Go TUN device and its duplicate. Only then may the engine send the matching generation/PID cleanup acknowledgement.
+6. The central service closes its retained original descriptor, verifies close completion, and only then releases the TUN lease.
+7. Every attach-failure, Binder-rejection, cancellation, process-death, and partial-start path must close the descriptor copy it owns exactly once. The central original remains owned by the service until its own close.
+
+### Scope and non-claims
+
+This source inspection establishes a feasible native FD entry point; it does **not** establish that Molido's wrapper, central service, Binder authentication, socket protection, or cleanup protocol has been implemented. The pinned source tag matching the current AAR remains the required baseline unless a separately reviewed upgrade is approved. No second VPN service may be declared during the transition, and the AAR dependency must not be removed until the replacement is built and tested atomically.
+
+Phase A's upstream FD API inspection is now source-verified. Phase B/C implementation and all runtime/device acceptance gates remain open.
