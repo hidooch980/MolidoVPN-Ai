@@ -163,3 +163,39 @@ Re-opened the exact upstream tag 1.0.20260102 source files:
 - Add fault-injection tests for missing IPv4/IPv6 socket FDs, callback exceptions, protection rejection, JNI load failure, duplicate close and startup cancellation. Then run Android instrumentation and physical-device traffic/leak tests.
 
 **Status:** source-level integration blocker, not a completed fix. No custom JNI wrapper, protection-before-traffic callback, central service, Binder FD handoff, or patched-fork APK integration is claimed. The existing upstream service remains the only VPN service until a replacement is fully proven.
+
+
+## 12. Native Bind socket-protection hook feasibility (2026-11-22)
+
+Reviewed the exact pinned `wireguard-go` commit `f333402bd9cb` (full commit `f333402bd9cbe0f3eeb02507bd14e23d7d639280`), including:
+
+- `conn/bind_std.go` (blob `f5c88160e18ae8534d096070d56e98495dd18b32`)
+- `conn/controlfns.go` (blob `27421bd26497fed05e016638b8e2e4f635c6b13d`)
+- `conn/controlfns_linux.go` (blob `f0deefaaf7e3cf26762c06b9cbcd75a293f83696`)
+- `conn/boundif_android.go` (blob `be69b2a453a93039b5430814d4d35539ac2ca0b9`)
+
+### Verified insertion point
+
+- Android `StdNetBind.Open()` calls `listenNet()` separately for `udp4` and `udp6`.
+- `listenNet()` obtains its sockets from `listenConfig().ListenPacket(...)`.
+- `listenConfig()` executes the package-level `controlFns` inside Go's `net.ListenConfig.Control` callback. Go invokes this callback on the socket before bind.
+- Therefore the pinned source has a concrete pre-bind hook for both IPv4 and IPv6 UDP sockets. This is a better integration point than the existing post-`wgTurnOn` Java protect calls and avoids trying to protect already-active sockets.
+- The hook is process-global today (`controlFns` is a package-level slice), so a Molido implementation must not add an unsynchronized mutable callback or allow a later engine/session to replace the active protection context.
+
+### Required implementation contract
+
+1. Add an Android-only, immutable per-engine protection bridge installed before device startup. It must be generation-scoped and reject calls when no active startup context exists.
+2. In the pre-bind control callback, obtain the raw socket FD only while inside `syscall.RawConn.Control`; validate it as non-negative and call the Java/VpnService protection bridge synchronously before returning from the callback.
+3. If the Java callback throws, Binder/service is unavailable, the generation is stale, or protection returns false, return an error from the pre-bind hook. `ListenPacket`/Bind.Open must fail and close the partially created socket; device startup must not proceed.
+4. Apply the hook to each socket family actually opened. If IPv4 or IPv6 is unsupported by the device, preserve the upstream `EAFNOSUPPORT` semantics; if a family is opened but its protection fails, fail the whole Bind open rather than silently accepting an unprotected family.
+5. Ensure the callback does not call back into WireGuard lifecycle methods while `Bind.Open`/device startup locks are held. The bridge should be a narrow synchronous protection operation only, with bounded behavior and no re-entrant start/stop.
+6. Clear the generation-scoped callback only after native shutdown is confirmed. Protect against concurrent start/stop, stale callback invocations, JNI exceptions, and double close.
+7. Add Go unit tests around the hook using injected protect functions (success, false, error, panic, invalid FD, IPv4-only, IPv6-only, both families, partial-open cleanup, repeated start/stop, and concurrent generation changes). Add Android JNI instrumentation proving the callback reaches the actual `VpnService.protect(fd)` implementation from the packaged library.
+
+### JNI boundary implications
+
+A Go callback alone is not sufficient: the Android cgo/JNI bridge must attach the calling native thread to the JVM when needed, hold a valid global reference for the service bridge, invoke the Java method with a stable signature, translate Java exceptions into a Go error, and release references only after all bind callbacks have quiesced. This must be reviewed for thread attachment, JNI local/global reference lifetime, class-loader behavior, and deadlock/reentrancy. The APK must load this exact patched `libwg-go.so`; an unconnected Go artifact or Kotlin declaration is not evidence.
+
+### Status
+
+**FEASIBILITY SOURCE-VERIFIED; IMPLEMENTATION NOT STARTED.** The pinned source exposes a pre-bind callback point, but no callback, JNI bridge, Molido service, APK library replacement, or tests have been implemented by this review. Existing AAR GoBackend remains the only VPN service/TUN owner. Do not mark the protection-ordering blocker resolved until the complete callback and packaged-APK/device tests pass.
