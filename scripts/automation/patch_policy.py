@@ -155,10 +155,10 @@ def validate_patch_plan(plan: Any) -> tuple[bool, str]:
         if line.startswith(" "):
             old_left -= 1
             new_left -= 1
-        elif line.startswith("+") and not line.startswith("+++"):
+        elif line.startswith("+"):
             new_left -= 1
             actual[current][0] += 1
-        elif line.startswith("-") and not line.startswith("---"):
+        elif line.startswith("-"):
             old_left -= 1
             actual[current][1] += 1
         elif line.startswith("\\ No newline at end of file"):
