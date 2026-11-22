@@ -36,12 +36,20 @@ jobs:
           gradle-version: '8.11.1'
       - name: Test Gradle retry classification
         run: python3 scripts/ci/test_gradle_retry.py -v
+      - name: Test merged VPN manifest guard
+        run: python3 -m unittest scripts.ci.test_validate_vpn_manifest -v
       - name: Run unit tests (retry transient repository failures only)
         run: python3 scripts/ci/gradle_retry.py -- gradle --no-daemon :android:app:testDebugUnitTest
       - name: Run Android lint (retry transient repository failures only)
         run: python3 scripts/ci/gradle_retry.py -- gradle --no-daemon :android:app:lintDebug
       - name: Assemble release variant (CI validation only; never distributed)
         run: python3 scripts/ci/gradle_retry.py -- gradle --no-daemon :android:app:assembleRelease
+      - name: Assert exactly one merged VPN service
+        run: |
+          set -euo pipefail
+          MANIFEST="$(find android/app/build/intermediates/merged_manifest/release -type f -name AndroidManifest.xml -print -quit)"
+          test -n "$MANIFEST"
+          python3 scripts/ci/validate_vpn_manifest.py "$MANIFEST"
 
 
   backend:
