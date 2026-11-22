@@ -212,4 +212,27 @@ class SessionSupervisorTest {
         assertTrue(supervisor.claim(EngineSlot.WIREGUARD))
     }
 
+
+    @Test
+    fun lateFailureCallbackDoesNotRegressStoppingAfterProcessDeath() {
+        val coordinator = TunOwnershipCoordinator()
+        val supervisor = SessionSupervisor(coordinator)
+
+        assertTrue(supervisor.claim(EngineSlot.V2RAY_XRAY))
+        val lease = supervisor.tunLeaseFor(EngineSlot.V2RAY_XRAY)!!
+        assertTrue(coordinator.markDescriptorTransferred(lease, 10423))
+        assertTrue(supervisor.markRunning(EngineSlot.V2RAY_XRAY))
+        assertTrue(supervisor.beginStopping(EngineSlot.V2RAY_XRAY))
+        assertEquals(SessionState.STOPPING, supervisor.snapshot().state)
+
+        // A death/failure callback can race with an already-started stop operation.
+        assertTrue(coordinator.reportEngineProcessDeath(lease, 10423))
+        assertTrue(supervisor.markFailed(EngineSlot.V2RAY_XRAY))
+        assertEquals(SessionState.STOPPING, supervisor.snapshot().state)
+
+        assertTrue(coordinator.confirmServiceTunClosed(lease))
+        assertTrue(supervisor.release(EngineSlot.V2RAY_XRAY))
+        assertEquals(SessionState.IDLE, supervisor.snapshot().state)
+    }
+
 }
