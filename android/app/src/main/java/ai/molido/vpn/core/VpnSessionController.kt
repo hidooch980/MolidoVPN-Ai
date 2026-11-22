@@ -1,12 +1,15 @@
 package ai.molido.vpn.core
 
+import java.util.concurrent.CopyOnWriteArrayList
+
 class VpnSessionController(
     private val supervisor: SessionSupervisor,
     adapters: Collection<EngineAdapter>,
     private val networkAssessmentProvider: (() -> NetworkAssessment)? = null,
     private val networkPolicyProvider: () -> NetworkPolicy = { NetworkPolicy.ANY_VALIDATED },
     private val diagnostics: DiagnosticsObservabilityCore? = null,
-    private val nowEpochMillis: () -> Long = System::currentTimeMillis
+    private val nowEpochMillis: () -> Long = System::currentTimeMillis,
+    private val recoveryAttemptGate: RecoveryAttemptGate = RecoveryAttemptGate()
 ) {
     private val adaptersBySlot: Map<EngineSlot, EngineAdapter> =
         adapters.associateBy { it.slot }.also { mapped ->
@@ -15,19 +18,48 @@ class VpnSessionController(
     private var activeSession: EngineSession? = null
     private var activeOwner: EngineSlot? = null
     private var lastPathDecision: AdaptivePathDecision? = null
+    private var lastNetworkAssessment: NetworkAssessment? = null
     private val pendingEngineFailures = mutableSetOf<EngineSlot>()
+    private val stateObservers = CopyOnWriteArrayList<(SessionSnapshot) -> Unit>()
 
     /** UI observers receive lifecycle snapshots; callbacks must not block engine work. */
     @Volatile
     var onSessionStateChanged: ((SessionSnapshot) -> Unit)? = null
         set(value) {
             field = value
-            value?.invoke(snapshot())
+            notifyStateObserver(value, supervisor.snapshot())
         }
 
     private fun publishState() {
         val current = supervisor.snapshot()
-        onSessionStateChanged?.invoke(current)
+        notifyStateObserver(onSessionStateChanged, current)
+        stateObservers.forEach { observer -> notifyStateObserver(observer, current) }
+    }
+
+    fun addStateObserver(observer: (SessionSnapshot) -> Unit) {
+        stateObservers.addIfAbsent(observer)
+        notifyStateObserver(observer, supervisor.snapshot())
+    }
+
+    fun removeStateObserver(observer: (SessionSnapshot) -> Unit) {
+        stateObservers.remove(observer)
+    }
+
+    /**
+     * UI observers are outside the VPN lifecycle trust boundary. A broken observer must
+     * never interrupt TUN startup, stop, or ownership release.
+     */
+    private fun notifyStateObserver(
+        observer: ((SessionSnapshot) -> Unit)?,
+        current: SessionSnapshot
+    ) {
+        try {
+            observer?.invoke(current)
+        } catch (_: Exception) {
+            runCatching {
+                record("SESSION_OBSERVER_FAILED", "A session-state observer threw an exception")
+            }
+        }
     }
 
     init {
@@ -62,6 +94,10 @@ class VpnSessionController(
     fun connect(slot: EngineSlot, configuration: String): Boolean {
         if (activeSession != null) return activeOwner == slot && supervisor.snapshot().state == SessionState.RUNNING
         val adapter = adaptersBySlot[slot] ?: return false
+        if (supervisor.requiresTunLease() && adapter !is TunLeaseAwareEngineAdapter) {
+            record("ENGINE_TUN_LEASE_UNSUPPORTED", "Registered engine does not accept the shared TUN lease")
+            return false
+        }
         val assessment = networkAssessmentProvider?.invoke()
         if (assessment != null) {
             val decision = AdaptivePathPolicyCore.evaluate(assessment, networkPolicyProvider())
@@ -77,7 +113,13 @@ class VpnSessionController(
         }
         publishState()
         val session = try {
-            adapter.start(configuration)
+            if (supervisor.requiresTunLease()) {
+                val lease = supervisor.tunLeaseFor(slot)
+                    ?: error("Shared TUN lease reservation is missing")
+                (adapter as TunLeaseAwareEngineAdapter).start(configuration, lease)
+            } else {
+                adapter.start(configuration)
+            }
         } catch (failure: Throwable) {
             pendingEngineFailures.remove(slot)
             supervisor.markFailed(slot)
@@ -85,6 +127,21 @@ class VpnSessionController(
             if (cleanupSession != null) {
                 activeSession = cleanupSession
                 activeOwner = slot
+            } else if (supervisor.requiresTunLease()) {
+                val cleanupConfirmed = (failure as? EngineStartException)?.cleanupConfirmed == true
+                if (cleanupConfirmed) {
+                    check(supervisor.releaseUnstartedReservation(
+                        slot,
+                        backendCleanupConfirmed = true
+                    )) {
+                        "Adapter reported cleanup, but shared TUN reservation release was not confirmed"
+                    }
+                } else {
+                    // No cleanup handle and no positive transport acknowledgement:
+                    // retain exclusive ownership rather than assume the TUN is down.
+                    activeOwner = slot
+                    record("STARTUP_CLEANUP_UNCONFIRMED", "Startup failed without cleanup proof; shared TUN ownership retained")
+                }
             } else {
                 supervisor.beginStopping(slot)
                 supervisor.release(slot)
@@ -107,7 +164,16 @@ class VpnSessionController(
                 publishState()
                 throw failure
             }
-            check(supervisor.release(slot)) { "Session ownership could not be released after startup rollback" }
+            if (!supervisor.release(slot)) {
+                // Preserve the only idempotent cleanup handle until the ownership
+                // authority confirms that the shared lease is actually released.
+                activeSession = session
+                activeOwner = slot
+                supervisor.markFailed(slot)
+                record("START_ROLLBACK_PENDING", "Ownership release was not confirmed; cleanup handle retained")
+                publishState()
+                return false
+            }
             record("START_ROLLBACK_COMPLETE", "Session startup rolled back")
             publishState()
             return false
@@ -137,13 +203,109 @@ class VpnSessionController(
             publishState()
             throw failure
         }
+        if (!supervisor.release(owner)) {
+            // Do not discard the only retry handle while the coordinator still holds
+            // the lease. FAILED permits a subsequent disconnect() to retry idempotently.
+            supervisor.markFailed(owner)
+            record("SESSION_RELEASE_PENDING", "Transport stopped but shared ownership release was not confirmed")
+            publishState()
+            return false
+        }
         activeSession = null
         activeOwner = null
-        check(supervisor.release(owner)) { "Session ownership could not be released after cleanup" }
         record("SESSION_STOPPED", "VPN engine session stopped and ownership released")
         publishState()
         return true
     }
+
+    /**
+     * Samples health only for the currently RUNNING session. Telemetry exceptions are
+     * converted to an explicit invalid assessment; they never imply STOPPED or healthy.
+     * Callers may schedule this at a bounded cadence from the app lifecycle monitor.
+     */
+    fun observeActiveTunnelHealth(): TunnelHealthAssessment? {
+        // Never call an adapter while holding the controller monitor: native callbacks
+        // can re-enter the controller while the adapter serializes backend operations.
+        val capture = synchronized(this) {
+            val owner = activeOwner
+            val session = activeSession
+            val snapshot = supervisor.snapshot()
+            val provider = owner?.let { adaptersBySlot[it] as? TunnelHealthAwareAdapter }
+            if (owner == null || session == null || provider == null ||
+                snapshot.state != SessionState.RUNNING
+            ) null else HealthSampleCapture(owner, session, snapshot.generation, provider)
+        } ?: return null
+
+        val assessment = try {
+            capture.provider.runtimeHealth(nowEpochMillis())
+        } catch (_: Exception) {
+            TunnelHealthAssessment(
+                state = TunnelHealthState.INVALID_TELEMETRY,
+                explanation = "Runtime telemetry could not be read"
+            )
+        } ?: return null
+
+        // Drop stale samples if disconnect/reconnect changed the owner or generation
+        // while native telemetry was being read.
+        synchronized(this) {
+            val current = supervisor.snapshot()
+            if (activeOwner != capture.owner || activeSession !== capture.session ||
+                current.generation != capture.generation || current.state != SessionState.RUNNING
+            ) return null
+            record("TUNNEL_HEALTH_${assessment.state.name}", assessment.explanation)
+        }
+        return assessment
+    }
+
+    private data class HealthSampleCapture(
+        val owner: EngineSlot,
+        val session: EngineSession,
+        val generation: Long,
+        val provider: TunnelHealthAwareAdapter
+    )
+
+
+    /**
+     * Consumes an OS network observation. Default-network validation is not proof of
+     * VPN data-plane reachability. Degradation never silently stops the engine or TUN.
+     */
+    @Synchronized
+    fun observeNetworkAssessment(assessment: NetworkAssessment): Boolean {
+        val previous = lastNetworkAssessment
+        lastNetworkAssessment = assessment
+        val changed = previous == null ||
+            previous.status != assessment.status ||
+            previous.transport != assessment.transport ||
+            previous.metered != assessment.metered
+        if (!changed) return false
+        val transport = assessment.transport?.name ?: "unknown"
+        record("NETWORK_PATH_CHANGED", "status=${assessment.status};transport=$transport;metered=${assessment.metered}")
+        if (activeSession != null && supervisor.snapshot().state == SessionState.RUNNING) {
+            if (assessment.status == NetworkAssessmentStatus.VALIDATED) {
+                record("SESSION_NETWORK_VALIDATED", "Android reports a validated default network; VPN reachability remains unverified")
+            } else {
+                record("SESSION_NETWORK_DEGRADED", "Default network is unavailable, unvalidated, stale, or unknown; TUN ownership retained")
+            }
+        }
+        return true
+    }
+
+
+    /** Atomically reserves one bounded retry slot; concurrent callers cannot overlap. */
+    @Synchronized
+    fun beginRecoveryAttempt(): RecoveryAttemptToken? = recoveryAttemptGate.tryStart()
+
+    /** Completes only the exact outstanding token; stale callbacks cannot unlock a newer attempt. */
+    @Synchronized
+    fun completeRecoveryAttempt(token: RecoveryAttemptToken, connected: Boolean): Boolean =
+        recoveryAttemptGate.complete(token, connected)
+
+    @Synchronized
+    fun recoveryAttemptsStarted(): Int = recoveryAttemptGate.attemptsStarted()
+
+    /** Reset a process-death lockout only from an explicit user-initiated connect flow. */
+    @Synchronized
+    fun resetRecoveryAfterExplicitUserAction(): Boolean = recoveryAttemptGate.resetAfterExplicitUserAction()
 
     @Synchronized fun snapshot(): SessionSnapshot = supervisor.snapshot()
     @Synchronized fun latestPathDecision(): AdaptivePathDecision? = lastPathDecision
@@ -152,7 +314,8 @@ class VpnSessionController(
     @Synchronized
     fun reportActiveEngineFailure(): Boolean {
         val owner = activeOwner ?: return false
-        if (activeSession == null || !supervisor.markFailed(owner)) return false
+        if (activeSession == null || supervisor.snapshot().state != SessionState.RUNNING) return false
+        if (!supervisor.markFailed(owner)) return false
         record("ENGINE_SESSION_FAILED", "Active engine reported failure; exclusive ownership retained")
         publishState()
         return true
@@ -214,9 +377,17 @@ class VpnSessionController(
                 reason = "Previous session cleanup failed; ownership retained for retry"
             )
         }
+        if (!supervisor.release(owner)) {
+            supervisor.markFailed(owner)
+            record("RECOVERY_RELEASE_PENDING", "Recovery cleanup returned but ownership release was not confirmed")
+            publishState()
+            return RecoveryPlan(
+                RecoveryAction.NONE, attempt = attempt,
+                reason = "Shared ownership remains held; cleanup handle retained for retry"
+            )
+        }
         activeSession = null
         activeOwner = null
-        check(supervisor.release(owner)) { "Session ownership could not be released after recovery cleanup" }
         record("RECOVERY_CLEANUP_COMPLETE", "Previous engine released ownership before retry")
         publishState()
         return plan

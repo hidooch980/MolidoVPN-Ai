@@ -13,6 +13,8 @@ import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Spinner
+import android.widget.ArrayAdapter
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -38,6 +40,10 @@ class MainActivity : ComponentActivity() {
     private lateinit var policyView: TextView
     private lateinit var profileImportButton: Button
     private lateinit var wireGuardStateView: TextView
+    private lateinit var providerSpinner: Spinner
+    private lateinit var countrySpinner: Spinner
+    private lateinit var countryAdapter: ArrayAdapter<String>
+    private lateinit var providerStatusView: TextView
     private var controlsBusy = false
     private val policyButtons = mutableMapOf<NetworkPolicy, Button>()
     private var profileText: String? = null
@@ -159,14 +165,70 @@ class MainActivity : ComponentActivity() {
 
         val engineCard = card()
         engineCard.addView(label("موتورهای VPN", 17f, AQUA, true))
-        engineCard.addView(label("فقط موتورهای پیاده‌سازی و آزمایش‌شده قابل انتخاب هستند.", 12f, MUTED, false))
-        engineCard.addView(engineRow("WireGuard", "پیاده‌سازی شده • نیازمند تست دستگاه", true, wireGuard = true))
-        engineCard.addView(engineRow("AmneziaWG", "هنوز پیاده‌سازی نشده", false))
-        engineCard.addView(engineRow("V2Ray / Xray", "هنوز پیاده‌سازی نشده", false))
-        engineCard.addView(engineRow("Psiphon", "هنوز پیاده‌سازی نشده", false))
-        engineCard.addView(engineRow("Tor", "هنوز پیاده‌سازی نشده", false))
-        engineCard.addView(engineRow("MASQUE / WARP", "هنوز پیاده‌سازی نشده", false))
+        engineCard.addView(label("وضعیت هر موتور از ثبت آداپتور و مراحل واقعی آزمون استخراج می‌شود.", 12f, MUTED, false))
+        molidoApp.engineCapabilities.forEach { capability ->
+            val status = when (capability.readiness) {
+                ai.molido.vpn.core.EngineReadiness.NOT_IMPLEMENTED -> "هنوز پیاده‌سازی نشده"
+                ai.molido.vpn.core.EngineReadiness.SOURCE_IMPLEMENTED -> "کد موجود • تست اتصال روی دستگاه لازم است"
+                ai.molido.vpn.core.EngineReadiness.CI_BUILT -> "ساخت CI موفق"
+                ai.molido.vpn.core.EngineReadiness.CI_TESTED -> "تست CI موفق"
+                ai.molido.vpn.core.EngineReadiness.ANDROID_DEVICE_TESTED -> "روی دستگاه Android آزمایش شده"
+                ai.molido.vpn.core.EngineReadiness.SERVER_DEPLOYMENT_REQUIRED -> "نیازمند استقرار سرور"
+                ai.molido.vpn.core.EngineReadiness.PRODUCTION_VERIFIED -> "تأیید تولید"
+                ai.molido.vpn.core.EngineReadiness.BLOCKED -> "مسدود / نیازمند رفع مانع"
+            }
+            engineCard.addView(engineRow(
+                capability.displayName,
+                status,
+                capability.selectable,
+                wireGuard = capability.slot == EngineSlot.WIREGUARD
+            ))
+        }
+        engineCard.addView(glassButton("به‌روزرسانی آمار WireGuard", false).apply {
+            setOnClickListener { refreshWireGuardStatistics() }
+        }, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(10) })
         page.addView(engineCard, sectionParams())
+
+        val routingCard = card()
+        routingCard.addView(label("انتخاب مسیر اتصال", 17f, AQUA, true))
+        routingCard.addView(label("سرویس‌دهنده و کشور مقصد را از فهرست‌ها انتخاب کنید. انتخاب، اتصال خودکار ایجاد نمی‌کند.", 12f, MUTED, false))
+        routingCard.addView(label("سرویس‌دهنده", 13f, WHITE, true).apply { setPadding(0, dp(12), 0, dp(5)) })
+        val selectableCapabilities = molidoApp.engineCapabilities.filter { it.selectable }
+        providerSpinner = dropdown(selectableCapabilities.map { it.displayName })
+        routingCard.addView(providerSpinner, LinearLayout.LayoutParams(-1, dp(50)))
+        routingCard.addView(label("کشور مقصد", 13f, WHITE, true).apply { setPadding(0, dp(12), 0, dp(5)) })
+        countryAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item,
+            mutableListOf("کشور در پروفایل / سرویس تعیین می‌شود")).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        countrySpinner = Spinner(this).apply {
+            adapter = countryAdapter
+            background = rounded(Color.rgb(18, 54, 67), STROKE, 14f)
+            setPadding(dp(10), 0, dp(10), 0)
+        }
+        routingCard.addView(countrySpinner, LinearLayout.LayoutParams(-1, dp(50)))
+        countrySpinner.isEnabled = false
+        providerStatusView = label(
+            "فقط موتورهای دارای آداپتور ثبت‌شده در فهرست انتخاب هستند. کشور مقصد تا دریافت موجودی معتبر از سرویس‌دهنده قابل انتخاب نیست.",
+            12f, GOLD, false
+        ).apply { setPadding(0, dp(10), 0, 0) }
+        routingCard.addView(providerStatusView)
+        providerSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val capability = selectableCapabilities.getOrNull(position)
+                providerStatusView.text = capability?.statusDetail ?: "هیچ موتور قابل انتخابی ثبت نشده است."
+                countrySpinner.isEnabled = capability?.countrySelectionSupported == true &&
+                    capability.availableCountries.isNotEmpty()
+                val countryOptions = capability?.availableCountries.orEmpty()
+                val options = listOf("کشور در پروفایل / سرویس تعیین می‌شود") + countryOptions
+                countryAdapter.clear()
+                countryAdapter.addAll(options)
+                countryAdapter.notifyDataSetChanged()
+                countrySpinner.setSelection(0)
+            }
+        }
+        page.addView(routingCard, sectionParams())
 
         val profileCard = card()
         profileCard.addView(label("پروفایل و تنظیمات اتصال", 17f, AQUA, true))
@@ -218,6 +280,36 @@ class MainActivity : ComponentActivity() {
         }
         page.addView(footer)
         setContentView(scroll)
+    }
+
+    private fun refreshWireGuardStatistics() {
+        try {
+            val stats = molidoApp.wireGuardAdapter.runtimeStatistics()
+            if (stats == null) {
+                providerStatusView.text = "WireGuard فعال نیست؛ ابتدا یک پروفایل معتبر وارد و اتصال را آغاز کنید."
+                return
+            }
+            val handshake = if (stats.latestHandshakeEpochMillis > 0L) {
+                val ageSeconds = ((System.currentTimeMillis() - stats.latestHandshakeEpochMillis).coerceAtLeast(0L)) / 1000L
+                "آخرین Handshake: $ageSeconds ثانیه قبل"
+            } else {
+                "هنوز Handshake ثبت نشده است"
+            }
+            providerStatusView.text = "$handshake\nدریافت: ${stats.receivedBytes} بایت • ارسال: ${stats.transmittedBytes} بایت\nاین آمار به‌تنهایی دسترسی اینترنت یا سلامت کامل Data Plane را اثبات نمی‌کند."
+        } catch (_: Exception) {
+            providerStatusView.text = "خواندن آمار WireGuard ناموفق بود؛ وضعیت اتصال را موفق فرض نکنید."
+        }
+    }
+
+    private fun dropdown(items: List<String>): Spinner {
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, items).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        return Spinner(this).apply {
+            this.adapter = adapter
+            background = rounded(Color.rgb(18, 54, 67), STROKE, 14f)
+            setPadding(dp(10), 0, dp(10), 0)
+        }
     }
 
     private fun engineRow(name: String, state: String, available: Boolean, wireGuard: Boolean = false): View {
@@ -392,6 +484,12 @@ class MainActivity : ComponentActivity() {
 
     private fun connectUsingLoadedProfile() {
         val configuration = profileText ?: return
+        molidoApp.clearRecoveryConfiguration()
+        if (!molidoApp.vpnSessions.resetRecoveryAfterExplicitUserAction()) {
+            Toast.makeText(this, "بازنشانی ایمن وضعیت بازیابی ناموفق بود؛ اتصال آغاز نشد.", Toast.LENGTH_LONG).show()
+            return
+        }
+        molidoApp.setRecoveryConfiguration(configuration)
         setControlsEnabled(false)
         molidoApp.vpnExecutor.execute {
             try {
@@ -408,6 +506,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun disconnectTunnel() {
+        molidoApp.clearRecoveryConfiguration()
         setControlsEnabled(false)
         molidoApp.vpnExecutor.execute {
             try {

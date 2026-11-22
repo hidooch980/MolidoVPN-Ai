@@ -18,8 +18,12 @@ class ControlPlaneClient(
     private val connectTimeoutMillis: Int = 10_000,
     private val readTimeoutMillis: Int = 15_000
 ) {
+    init {
+        ControlPlaneRequestPolicy.validateTimeouts(connectTimeoutMillis, readTimeoutMillis)
+    }
+
     fun fetchAndVerify(baseUrl: String, deviceToken: String, nowEpochSeconds: Long): ControlPlaneFetchResult {
-        require(deviceToken.isNotBlank() && deviceToken.length <= 512)
+        ControlPlaneRequestPolicy.validateDeviceToken(deviceToken)
         require(nowEpochSeconds >= 0)
         val uri = URI(baseUrl)
         require(uri.scheme.equals("https", ignoreCase = true) && !uri.host.isNullOrBlank())

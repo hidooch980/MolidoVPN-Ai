@@ -1,10 +1,8 @@
 package ai.molido.vpn.core
 
 /**
- * Single-session lifecycle coordinator.
- *
- * This class arbitrates engine ownership only. It does not create an Android TUN,
- * start packet I/O, or claim that a tunnel is connected.
+ * Single-session lifecycle coordinator and, when configured, the authority that reserves
+ * the application's shared TUN lease. It never creates a TUN or starts packet I/O.
  */
 enum class SessionState {
     IDLE,
@@ -20,60 +18,172 @@ data class SessionSnapshot(
     val generation: Long
 )
 
-class SessionSupervisor {
+class SessionSupervisor(
+    private val tunOwnership: TunOwnershipCoordinator? = null
+) {
     private var activeEngine: EngineSlot? = null
+    private var activeLease: TunLeaseToken? = null
     private var state: SessionState = SessionState.IDLE
     private var generation: Long = 0
 
-    /** Reserves the single session slot for an engine. */
+    /** Reserves the one session slot and, in production, its matching shared TUN lease. */
     @Synchronized
     fun claim(engine: EngineSlot): Boolean {
-        // A claim is a one-time reservation, never a re-entrant permission.
-        // Even the same engine must not be able to start through a second controller.
         if (state != SessionState.IDLE) return false
+        val lease = if (tunOwnership == null) {
+            null
+        } else {
+            val coordinator = tunOwnership
+            val acquired = if (engine == EngineSlot.WIREGUARD) {
+                coordinator.acquireBackendManaged(engine)
+            } else {
+                coordinator.acquire(engine)
+            }
+            acquired ?: return false
+        }
         activeEngine = engine
+        activeLease = lease
         state = SessionState.RESERVED
         generation += 1
         return true
     }
 
-    /** Marks startup complete; callers must only do this after the data plane is ready. */
+    @Synchronized
+    fun requiresTunLease(): Boolean = tunOwnership != null
+
+    /** Returns only the exact generation reserved for the current owner. */
+    @Synchronized
+    fun tunLeaseFor(engine: EngineSlot): TunLeaseToken? =
+        if (activeEngine == engine) activeLease else null
+
+    /** Marks startup complete only after the adapter has activated the same TUN lease. */
     @Synchronized
     fun markRunning(engine: EngineSlot): Boolean {
         if (activeEngine != engine || state != SessionState.RESERVED) return false
+        val lease = activeLease
+        if (tunOwnership != null) {
+            if (lease == null) return false
+            val snapshot = tunOwnership.snapshot()
+            if (snapshot.owner != engine ||
+                snapshot.generation != lease.generation ||
+                snapshot.state != TunLeaseState.ACTIVE
+            ) return false
+        }
         state = SessionState.RUNNING
         return true
     }
 
-    /** Moves an owned session into an explicit shutdown phase. */
+    /** Moves both lifecycle authorities into STOPPING; repeated transitions are safe. */
     @Synchronized
     fun beginStopping(engine: EngineSlot): Boolean {
         if (activeEngine != engine) return false
         if (state != SessionState.RESERVED &&
             state != SessionState.RUNNING &&
+            state != SessionState.STOPPING &&
             state != SessionState.FAILED
         ) return false
+        val lease = activeLease
+        if (tunOwnership != null) {
+            if (lease == null) return false
+            val snapshot = tunOwnership.snapshot()
+            val alreadyClosedForThisGeneration =
+                snapshot.owner == null &&
+                snapshot.state == TunLeaseState.IDLE &&
+                snapshot.generation == lease.generation
+
+            // The service may finish its fail-closed close path before the session
+            // callback is delivered. Accept that exact-generation completion rather
+            // than leaving the facade stuck in RUNNING/FAILED.
+            val stopAccepted = if (alreadyClosedForThisGeneration) {
+                true
+            } else {
+                if (snapshot.owner != engine || snapshot.generation != lease.generation) return false
+                // A native engine can die while holding a duplicated TUN descriptor.
+                // The coordinator moves to CLEANUP_REQUIRED; this permits the facade
+                // to enter STOPPING but does not itself confirm descriptor closure.
+                if (snapshot.state == TunLeaseState.CLEANUP_REQUIRED) {
+                    lease.transport == TunLeaseTransport.DESCRIPTOR_HANDOFF
+                } else {
+                    tunOwnership.beginStop(lease)
+                }
+            }
+            if (!stopAccepted) return false
+        }
         state = SessionState.STOPPING
         return true
     }
 
-    /** Records a fail-closed error while retaining ownership until cleanup completes. */
+    /** Records a fail-closed error while retaining both ownership records. */
     @Synchronized
     fun markFailed(engine: EngineSlot): Boolean {
         if (activeEngine != engine || state == SessionState.IDLE) return false
+        // A failed stop must leave a retryable FAILED state. Asynchronous engine
+        // failure callbacks are filtered by VpnSessionController once STOPPING begins.
         state = SessionState.FAILED
         return true
     }
 
     /**
-     * Releases ownership only before startup or after the caller has entered STOPPING.
-     * A RUNNING session cannot be silently released.
+     * Releases only after the transport itself has confirmed cleanup. A RUNNING or
+     * still-leased session can never be silently released.
      */
     @Synchronized
     fun release(engine: EngineSlot): Boolean {
         if (activeEngine != engine) return false
         if (state != SessionState.RESERVED && state != SessionState.STOPPING) return false
+        if (tunOwnership != null) {
+            val lease = activeLease ?: return false
+            val snapshot = tunOwnership.snapshot()
+            if (snapshot.owner != null || snapshot.state != TunLeaseState.IDLE ||
+                snapshot.generation != lease.generation
+            ) return false
+        }
         activeEngine = null
+        activeLease = null
+        state = SessionState.IDLE
+        return true
+    }
+
+    /**
+     * Roll back a startup that failed before returning a session handle. The exact
+     * lease must still be RESERVED (no FD was transferred) or the service must already
+     * have independently confirmed closure and released the coordinator lease. An active
+     * or uncertain TUN is never silently released by this supervisor.
+     */
+    @Synchronized
+    fun releaseUnstartedReservation(
+        engine: EngineSlot,
+        backendCleanupConfirmed: Boolean = false
+    ): Boolean {
+        if (activeEngine != engine || state != SessionState.FAILED) return false
+        val coordinator = tunOwnership
+        val lease = activeLease
+        if (coordinator != null) {
+            if (lease == null) return false
+            val snapshot = coordinator.snapshot()
+            val alreadyCleanedByAdapter =
+                snapshot.owner == null &&
+                snapshot.state == TunLeaseState.IDLE &&
+                snapshot.generation == lease.generation
+            val released = if (alreadyCleanedByAdapter) {
+                true
+            } else {
+                // In CLEANUP_REQUIRED, only the central service can confirm that its
+                // original descriptor has actually been closed. This supervisor must
+                // never manufacture that acknowledgement during rollback.
+                if (!coordinator.isReserved(lease)) return false
+                when (lease.transport) {
+                    TunLeaseTransport.BACKEND_MANAGED ->
+                        backendCleanupConfirmed && coordinator.beginStop(lease) &&
+                            coordinator.confirmBackendStopped(lease)
+                    TunLeaseTransport.DESCRIPTOR_HANDOFF ->
+                        coordinator.confirmServiceTunClosed(lease)
+                }
+            }
+            if (!released) return false
+        }
+        activeEngine = null
+        activeLease = null
         state = SessionState.IDLE
         return true
     }

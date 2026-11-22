@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - development/molido-vpn-ai-from-scratch
+      - feature/optional-warp-wireguard-enrollment
+      - feature/wireguard-runtime-diagnostics
   pull_request:
     branches:
       - development/molido-vpn-ai-from-scratch
@@ -14,7 +16,7 @@ permissions:
 
 concurrency:
   group: android-ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   validate:
@@ -33,45 +35,183 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Run unit tests (retry transient repository failures)
-        shell: bash
-        run: |
-          for attempt in 1 2 3; do
-            if gradle --no-daemon :android:app:testDebugUnitTest; then
-              exit 0
-            fi
-            if [ "$attempt" -lt 3 ]; then
-              echo "Gradle dependency/test attempt $attempt failed; retrying after 15 seconds."
-              sleep 15
-            fi
-          done
-          exit 1
-      - name: Run Android lint (retry transient repository failures)
-        shell: bash
-        run: |
-          for attempt in 1 2 3; do
-            if gradle --no-daemon :android:app:lintDebug; then
-              exit 0
-            fi
-            if [ "$attempt" -lt 3 ]; then
-              echo "Gradle lint attempt $attempt failed; retrying after 15 seconds."
-              sleep 15
-            fi
-          done
-          exit 1
+      - name: Test Gradle retry classification
+        run: python3 scripts/ci/test_gradle_retry.py -v
+      - name: Test merged VPN manifest guard
+        run: python3 -m unittest scripts.ci.test_validate_vpn_manifest -v
+      - name: Run unit tests (retry transient repository failures only)
+        run: python3 scripts/ci/gradle_retry.py -- gradle --no-daemon :android:app:testDebugUnitTest
+      - name: Run Android lint (retry transient repository failures only)
+        run: python3 scripts/ci/gradle_retry.py -- gradle --no-daemon :android:app:lintDebug
       - name: Assemble release variant (CI validation only; never distributed)
+        run: python3 scripts/ci/gradle_retry.py -- gradle --no-daemon :android:app:assembleRelease
+      - name: Assert exactly one merged VPN service
+        run: |
+          set -euo pipefail
+          MANIFEST="$(find android/app/build/intermediates/merged_manifest/release -type f -name AndroidManifest.xml -print -quit)"
+          test -n "$MANIFEST"
+          python3 scripts/ci/validate_vpn_manifest.py "$MANIFEST"
+
+      - name: Assemble physical-device debug test APK (not a release)
+        run: python3 scripts/ci/gradle_retry.py -- gradle --no-daemon :android:app:assembleDebug
+      - name: Verify and fingerprint physical-device debug APK
         shell: bash
         run: |
-          for attempt in 1 2 3; do
-            if gradle --no-daemon :android:app:assembleRelease; then
-              exit 0
-            fi
-            if [ "$attempt" -lt 3 ]; then
-              echo "Gradle release-assembly attempt $attempt failed; retrying after 15 seconds."
-              sleep 15
-            fi
-          done
-          exit 1
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          APKSIGNER="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          sha256sum "$APK" > "$APK.sha256"
+      - name: Upload physical-device debug test APK (not a release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: molido-vpn-android-device-test-debug
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/debug/app-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+
+
+  xray-android-arm64:
+    name: Pinned Xray Android ARM64 AAR (build validation only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOTOOLCHAIN: local
+      XRAY_WRAPPER_COMMIT: 48f35be868ee247e53a8036e284a8c2f97c80068
+      GEOIP_URL: https://github.com/v2ray/geoip/releases/download/202611080027/geoip.dat
+      GEOIP_SHA256: eedb24b3b9fcba27e06b92c0428dab90d9496083091ae4cf39e11387fd99d0e2
+      GEOSITE_URL: https://github.com/v2ray/domain-list-community/releases/download/20261121130529/dlc.dat
+      GEOSITE_SHA256: 5a8225ba9e888ed8c9289681d502ca15feeb6257c13b4061bb3256e86cfb3059
+    steps:
+      - name: Checkout Molido source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout pinned AndroidLibXrayLite source
+        uses: actions/checkout@v4
+        with:
+          repository: GFW-knocker/AndroidLibXrayLite
+          ref: 48f35be868ee247e53a8036e284a8c2f97c80068
+          path: third_party/AndroidLibXrayLite
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.7'
+          check-latest: false
+          cache: false
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-35 build-tools;35.0.0 platform-tools'
+      - name: Install pinned Android NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          # sdkmanager exits after accepting licenses; the producer may receive
+          # SIGPIPE when it closes stdin. Do not let pipefail misclassify that
+          # expected producer shutdown as a license-acceptance failure.
+          set +o pipefail
+          yes | sdkmanager --licenses >/dev/null
+          set -o pipefail
+          sdkmanager "ndk;28.2.13676358"
+          test -x "$ANDROID_HOME/ndk/28.2.13676358/ndk-build"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+      - name: Verify pinned module graph and data assets
+        working-directory: third_party/AndroidLibXrayLite
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$XRAY_WRAPPER_COMMIT"
+          test "$(go env GOVERSION)" = "go1.26.7"
+          mkdir -p data assets
+          curl --fail --location --retry 3 "$GEOIP_URL" --output data/geoip.dat
+          echo "$GEOIP_SHA256  data/geoip.dat" | sha256sum --check -
+          curl --fail --location --retry 3 "$GEOSITE_URL" --output data/geosite.dat
+          echo "$GEOSITE_SHA256  data/geosite.dat" | sha256sum --check -
+          cp data/geoip.dat assets/geoip.dat
+          cp data/geosite.dat assets/geosite.dat
+          go mod download
+          go mod verify
+          git diff --exit-code -- go.mod go.sum
+          go list -m all > module-inventory.txt
+          printf 'wrapper_commit=%s\n' "$XRAY_WRAPPER_COMMIT" > build-inputs.txt
+          printf 'go=%s\n' "$(go version)" >> build-inputs.txt
+          printf 'gomobile_module=golang.org/x/mobile@v0.0.0-20260217195705-b56b3793a9c4\n' >> build-inputs.txt
+          printf 'ndk=28.2.13676358\nandroid_api=26\n' >> build-inputs.txt
+          printf 'geoip_sha256=%s\ngeosite_sha256=%s\n' "$GEOIP_SHA256" "$GEOSITE_SHA256" >> build-inputs.txt
+      - name: Generate compiled dependency license report
+        working-directory: third_party/AndroidLibXrayLite
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/go-bin"
+          GOBIN="$RUNNER_TEMP/go-bin" go install github.com/google/go-licenses@v1.6.0
+          "$RUNNER_TEMP/go-bin/go-licenses" report ./... > license-report.csv
+          test -s license-report.csv
+      - name: Install pinned gomobile and initialize
+        working-directory: third_party/AndroidLibXrayLite
+        run: |
+          set -euo pipefail
+          go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20260217195705-b56b3793a9c4
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          "$(go env GOPATH)/bin/gomobile" init
+      - name: Test Xray patch transformer
+        run: python3 scripts/ci/test_patch_xray_wrapper.py -v
+      - name: Apply Molido fail-closed wrapper lifecycle patch
+        working-directory: third_party/AndroidLibXrayLite
+        run: python3 ../../scripts/ci/patch_xray_wrapper.py --source-dir .
+      - name: Test patched Android wrapper
+        working-directory: third_party/AndroidLibXrayLite
+        run: go test -run '^TestMolido' ./...
+      - name: Build Android ARM64 AAR (no release or signing)
+        working-directory: third_party/AndroidLibXrayLite
+        run: |
+          set -euo pipefail
+          gomobile bind -v -target=android/arm64 -androidapi 26 -trimpath \
+            -ldflags='-s -w -buildid= -checklinkname=0' ./
+          AAR="$(find . -maxdepth 1 -type f -name '*.aar' -print -quit)"
+          test -n "$AAR"
+          unzip -Z1 "$AAR" > aar-entries.txt
+          grep -q '^jni/arm64-v8a/' aar-entries.txt
+          if grep -Eq '^jni/(armeabi-v7a|x86|x86_64)/' aar-entries.txt; then
+            echo "Unexpected non-ARM64 native ABI found in AAR"
+            exit 1
+          fi
+          unzip -p "$AAR" jni/arm64-v8a/libgojni.so > "$RUNNER_TEMP/libgojni.so"
+          readelf -h "$RUNNER_TEMP/libgojni.so" > elf-header.txt
+          grep -q "Class:.*ELF64" elf-header.txt
+          grep -q "Machine:.*AArch64" elf-header.txt
+          go version -m "$RUNNER_TEMP/libgojni.so" > go-build-info.txt
+          grep -q "GOARCH=arm64" go-build-info.txt || grep -q "build.*GOARCH=arm64" go-build-info.txt
+          sha256sum "$AAR" > aar.sha256
+          printf 'aar=%s\n' "$AAR" >> build-inputs.txt
+          cat aar.sha256 >> build-inputs.txt
+      - name: Upload build evidence only
+        uses: actions/upload-artifact@v4
+        with:
+          name: xray-android-arm64-build-${{ github.sha }}
+          path: |
+            third_party/AndroidLibXrayLite/*.aar
+            third_party/AndroidLibXrayLite/aar.sha256
+            third_party/AndroidLibXrayLite/aar-entries.txt
+            third_party/AndroidLibXrayLite/build-inputs.txt
+            third_party/AndroidLibXrayLite/module-inventory.txt
+            third_party/AndroidLibXrayLite/elf-header.txt
+            third_party/AndroidLibXrayLite/go-build-info.txt
+            third_party/AndroidLibXrayLite/license-report.csv
+          if-no-files-found: error
+          retention-days: 7
 
   backend:
     name: Test self-hosted control plane
@@ -88,6 +228,8 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - name: Install backend test dependencies
         run: python -m pip install -r backend/requirements.txt
+      - name: Test autonomous bug-fix agent classification
+        run: python -m unittest scripts/automation/test_bugfix_agent.py -v
       - name: Run backend tests
         env:
           PYTHONPATH: .
@@ -96,7 +238,9 @@ jobs:
   android-keystore-instrumentation:
     name: Android Keystore instrumentation (emulator)
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 55
+    env:
+      ANDROID_EMULATOR_WAIT_TIME_BEFORE_KILL: "60"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -109,21 +253,177 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Run Android Keystore instrumentation tests
-        uses: reactivecircus/android-emulator-runner@v2
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
         with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          channel: stable
-          emulator-boot-timeout: 900
-          disable-animations: true
-          cores: 2
-          ram-size: 3072
-          heap-size: 512
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          script: gradle --no-daemon :android:app:connectedDebugAndroidTest
+          packages: platform-tools
+      - name: Install emulator image and create AVD
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Keep pipefail for later commands, but let sdkmanager determine the license step status.
+          set +o pipefail
+          yes | sdkmanager --licenses >/dev/null
+          set -o pipefail
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "emulator" \
+            "system-images;android-35;google_apis;x86_64"
+
+          # Pin AVD creation and emulator lookup to the same explicit directory.
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
+          echo "no" | avdmanager create avd \
+            --name molido-ci-api35 \
+            --package "system-images;android-35;google_apis;x86_64" \
+            --device pixel_2
+          test -s "$ANDROID_AVD_HOME/molido-ci-api35.ini"
+          test -d "$ANDROID_AVD_HOME/molido-ci-api35.avd"
+          avdmanager list avd
+      - name: Grant runner access to hardware virtualization
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -e /dev/kvm ]; then
+            echo "This runner does not expose /dev/kvm; x86_64 Android Emulator instrumentation cannot run here."
+            exit 1
+          fi
+          sudo chmod 0666 /dev/kvm
+          if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+            echo "The runner still cannot access /dev/kvm after permission setup."
+            ls -l /dev/kvm || true
+            id
+            exit 1
+          fi
+          ls -l /dev/kvm
+          id
+      - name: Boot emulator with hardware acceleration
+        shell: bash
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          adb start-server
+          EMULATOR_BIN="${ANDROID_HOME:-/usr/local/lib/android/sdk}/emulator/emulator"
+          if [ ! -x "$EMULATOR_BIN" ]; then
+            echo "Android Emulator binary is missing or not executable: $EMULATOR_BIN"
+            find "${ANDROID_HOME:-/usr/local/lib/android/sdk}" -maxdepth 3 -type f -name emulator -print || true
+            exit 1
+          fi
+          # KVM access is checked and granted in the preceding step. Require hardware
+          # acceleration so CI fails fast instead of attempting unsupported TCG.
+          nohup "$EMULATOR_BIN" -avd molido-ci-api35 \
+            -no-window -gpu swiftshader_indirect -no-snapshot -noaudio \
+            -no-boot-anim -camera-back none -no-metrics -accel on \
+            > "$RUNNER_TEMP/molido-emulator.log" 2>&1 &
+          emulator_pid=$!
+          echo "$emulator_pid" > "$RUNNER_TEMP/molido-emulator.pid"
+
+          # Bound the ADB transport wait: adb wait-for-device otherwise has no
+          # deadline and can keep this step alive without ever reaching boot checks.
+          if ! timeout 120s adb wait-for-device; then
+            echo "ADB did not detect the emulator within 120 seconds."
+            tail -n 250 "$RUNNER_TEMP/molido-emulator.log" || true
+            exit 1
+          fi
+
+          booted=0
+          for attempt in $(seq 1 900); do
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then
+              echo "Emulator process exited before Android completed boot."
+              tail -n 250 "$RUNNER_TEMP/molido-emulator.log" || true
+              exit 1
+            fi
+            state="$(timeout 15s adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+            if [ "$state" = "1" ]; then
+              booted=1
+              break
+            fi
+            if [ $((attempt % 30)) -eq 0 ]; then
+              echo "Waiting for Android boot: ${attempt}s elapsed."
+              adb devices -l || true
+              tail -n 60 "$RUNNER_TEMP/molido-emulator.log" || true
+            fi
+            sleep 1
+          done
+          if [ "$booted" -ne 1 ]; then
+            echo "Emulator did not complete boot within 900 seconds."
+            tail -n 250 "$RUNNER_TEMP/molido-emulator.log" || true
+            exit 1
+          fi
+          timeout 15s adb shell getprop ro.build.version.sdk
+          timeout 15s adb shell getprop sys.boot_completed
+
+          # sys.boot_completed can become 1 before system_server has published
+          # PackageManager. Do not start connected tests until package install works.
+          package_manager_ready=0
+          for attempt in $(seq 1 180); do
+            if timeout 10s adb shell pm list packages >/dev/null 2>&1; then
+              package_manager_ready=1
+              break
+            fi
+            echo "Waiting for Android PackageManager readiness: ${attempt}/180."
+            sleep 2
+          done
+          if [ "$package_manager_ready" -ne 1 ]; then
+            echo "Android boot completed, but PackageManager never became available."
+            adb shell service list || true
+            adb logcat -d -t 800 || true
+            tail -n 300 "$RUNNER_TEMP/molido-emulator.log" || true
+            exit 1
+          fi
+          adb devices -l
+      - name: Run Android Keystore instrumentation tests
+        timeout-minutes: 30
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/test_gradle_retry.py -v
+          python3 scripts/ci/gradle_retry.py --attempts 5 --delay-seconds 30 -- \
+            gradle --no-daemon :android:app:connectedDebugAndroidTest
+      - name: Collect emulator diagnostics on failure
+        if: failure()
+        shell: bash
+        timeout-minutes: 5
+        run: |
+          set +e
+          echo "=== ADB devices (15s limit) ==="
+          timeout 15s adb devices -l || true
+          echo "=== Android logcat (45s limit) ==="
+          timeout 45s adb logcat -b all -d -v threadtime -t 4000 || true
+          echo "=== Emulator crash and instrumentation markers ==="
+          timeout 20s adb logcat -b all -d -v threadtime -t 8000 2>/dev/null | grep -E "FATAL EXCEPTION|Fatal signal|am_crash|AndroidRuntime|INSTRUMENTATION_(STATUS|RESULT)|Process .* has died|keystore|Keystore" | tail -n 300 || true
+          echo "=== Emulator process log ==="
+          if [ -f "$RUNNER_TEMP/molido-emulator.log" ]; then
+            tail -n 300 "$RUNNER_TEMP/molido-emulator.log"
+          else
+            echo "Emulator log file was not created."
+          fi
+      - name: Stop emulator
+        if: always()
+        shell: bash
+        run: |
+          adb emu kill || true
+
+  wireguard-source-build:
+    name: Pinned WireGuard Go-only source build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout Molido
+        uses: actions/checkout@v4
+      - name: Set up Android NDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: ndk;27.2.12479018
+      - name: Test pinned WireGuard source patch transformer
+        run: python3 -m unittest scripts.ci.test_patch_wireguard_android -v
+      - name: Test pinned WireGuard UAPI cleanup patch transformer
+        run: python3 -m unittest scripts.ci.test_patch_wireguard_uapi -v
+      - name: Build exact upstream source with Go engine only
+        shell: bash
+        run: bash scripts/ci/build-wireguard-go-only.sh
 
   signed-release:
     name: Build and verify signed Android release
@@ -183,3 +483,35 @@ jobs:
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14
+
+  autonomous-bugfix-agent:
+    name: Autonomous CI bug-fix agent
+    if: always() && (needs.validate.result == 'failure' || needs.backend.result == 'failure' || needs.android-keystore-instrumentation.result == 'failure' || needs.wireguard-source-build.result == 'failure' || needs.signed-release.result == 'failure')
+    needs:
+      - validate
+      - backend
+      - android-keystore-instrumentation
+      - wireguard-source-build
+      - signed-release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
+      issues: write
+    env:
+      BUGFIX_RUN_ID: ${{ github.run_id }}
+      BUGFIX_RUN_ATTEMPT: ${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test bug-fix agent classification rules
+        run: python -m unittest scripts/automation/test_bugfix_agent.py -v
+      - name: Diagnose and safely recover failed CI jobs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/automation/bugfix_agent.py

@@ -19,6 +19,20 @@
         <receiver
             android:name=".UpdateInstallStatusReceiver"
             android:exported="false" />
+        <!-- Native Go engines are isolated from one another to avoid multiple Go runtimes in one process.
+             These private IPC services are NOT VPNServices and do not own/create a TUN. -->
+        <service
+            android:name=".engine.process.XrayEngineProcessService"
+            android:exported="false"
+            android:process=":engine_xray" />
+        <service
+            android:name=".engine.process.AmneziaEngineProcessService"
+            android:exported="false"
+            android:process=":engine_amneziawg" />
+        <service
+            android:name=".engine.process.PsiphonEngineProcessService"
+            android:exported="false"
+            android:process=":engine_psiphon" />
         <!-- The WireGuard AAR merges GoBackend.VpnService as the sole VPN service/TUN provider. -->
     </application>
 </manifest>

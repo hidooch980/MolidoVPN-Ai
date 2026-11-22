@@ -37,7 +37,7 @@ class AndroidUpdateInstaller(
         }
         verifyApkIdentityAndVersion(manifest.versionCode, artifact)
         val admission = UpdateInstallAdmissionPolicy.evaluate(
-            hasPendingInstall = preferences.getInt(KEY_PENDING_SESSION, NO_SESSION) != NO_SESSION,
+            hasPendingInstall = hasPendingInstall(),
             candidateVersionCode = manifest.versionCode,
             installedVersionCode = updateTrust.installedVersionCode(),
             trustedVersionCode = updateTrust.trustedVersionCode()
@@ -84,8 +84,18 @@ class AndroidUpdateInstaller(
             session.commit(statusPendingIntent.intentSender)
             return sessionId
         } catch (failure: Exception) {
-            clearPending(sessionId, "INSTALL_SUBMISSION_FAILED")
-            try { session?.abandon() } catch (_: Exception) { }
+            // createSession() allocates the platform session before openSession().
+            // If opening failed, session is null but the allocated session still exists.
+            // Do not clear the persisted pending marker unless abandonment succeeds.
+            if (abandonSession(sessionId, session)) {
+                clearPending(sessionId, "INSTALL_SUBMISSION_FAILED")
+            } else {
+                markCleanupPending(
+                    sessionId,
+                    "INSTALL_SUBMISSION_CLEANUP_PENDING",
+                    manifest.versionCode
+                )
+            }
             throw failure
         } finally {
             try { session?.close() } catch (_: Exception) { }
@@ -102,12 +112,32 @@ class AndroidUpdateInstaller(
         when (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 val confirmation = parcelableIntent(intent, Intent.EXTRA_INTENT) ?: run {
-                    clearPending(sessionId, "USER_CONFIRMATION_INTENT_MISSING")
+                    if (abandonSession(sessionId, null)) {
+                        clearPending(sessionId, "USER_CONFIRMATION_INTENT_MISSING")
+                    } else {
+                        markCleanupPending(sessionId, "USER_CONFIRMATION_CLEANUP_PENDING")
+                    }
                     return
                 }
                 confirmation.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                appContext.startActivity(confirmation)
-                preferences.edit().putString(KEY_LAST_RESULT, "WAITING_FOR_USER_CONFIRMATION").commit()
+                try {
+                    appContext.startActivity(confirmation)
+                } catch (_: Exception) {
+                    // Only a failed launch justifies abandoning the session. Once Android
+                    // accepted the confirmation activity, a SharedPreferences write failure
+                    // must NOT cancel the user's in-progress installation.
+                    if (abandonSession(sessionId, null)) {
+                        clearPending(sessionId, "USER_CONFIRMATION_LAUNCH_FAILED")
+                    } else {
+                        markCleanupPending(sessionId, "USER_CONFIRMATION_CLEANUP_PENDING")
+                    }
+                    return
+                }
+                // This is diagnostic state only. If persistence fails, retain the pending
+                // session marker and let PackageInstaller deliver the terminal callback.
+                preferences.edit()
+                    .putString(KEY_LAST_RESULT, "WAITING_FOR_USER_CONFIRMATION")
+                    .commit()
             }
             PackageInstaller.STATUS_SUCCESS -> {
                 val expected = preferences.getLong(KEY_PENDING_VERSION, 0L)
@@ -143,9 +173,62 @@ class AndroidUpdateInstaller(
         }
     }
 
-    private fun clearPending(sessionId: Int, result: String) {
-        if (preferences.getInt(KEY_PENDING_SESSION, NO_SESSION) != sessionId) return
-        preferences.edit()
+    /**
+     * Reconcile persisted pending state with PackageInstaller's live session list.
+     * A terminal/abandoned session whose callback was lost must not block updates forever.
+     * If state cannot be durably cleared, remain fail-closed.
+     */
+    private fun hasPendingInstall(): Boolean {
+        val pendingSessionId = preferences.getInt(KEY_PENDING_SESSION, NO_SESSION)
+        if (pendingSessionId == NO_SESSION) return false
+        val activeSessionIds = packageInstaller.mySessions.map { it.sessionId }
+        if (PendingInstallRecoveryPolicy.isSessionActive(pendingSessionId, activeSessionIds)) {
+            return true
+        }
+        return !clearPending(pendingSessionId, "STALE_PENDING_STATE_RECOVERED")
+    }
+
+    private fun abandonSession(
+        sessionId: Int,
+        openedSession: PackageInstaller.Session?
+    ): Boolean {
+        val abandonedThroughSession = try {
+            if (openedSession != null) {
+                openedSession.abandon()
+                true
+            } else {
+                false
+            }
+        } catch (_: Exception) {
+            false
+        }
+        if (abandonedThroughSession) return true
+        return try {
+            packageInstaller.abandonSession(sessionId)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun markCleanupPending(
+        sessionId: Int,
+        result: String,
+        versionCode: Long? = null
+    ) {
+        val editor = preferences.edit()
+        if (versionCode != null) {
+            editor.putInt(KEY_PENDING_SESSION, sessionId)
+                .putLong(KEY_PENDING_VERSION, versionCode)
+        } else if (preferences.getInt(KEY_PENDING_SESSION, NO_SESSION) != sessionId) {
+            return
+        }
+        editor.putString(KEY_LAST_RESULT, result).commit()
+    }
+
+    private fun clearPending(sessionId: Int, result: String): Boolean {
+        if (preferences.getInt(KEY_PENDING_SESSION, NO_SESSION) != sessionId) return true
+        return preferences.edit()
             .remove(KEY_PENDING_SESSION)
             .remove(KEY_PENDING_VERSION)
             .putString(KEY_LAST_RESULT, result)
