@@ -31,6 +31,22 @@ git -C "$WORK_DIR" checkout --detach "$EXPECTED_COMMIT"
 # Apply a strict patch to the exact pinned Android entry point before native compilation.
 python3 "$GITHUB_WORKSPACE/scripts/ci/patch_wireguard_android.py" --source "$WORK_DIR/tunnel/tools/libwg-go/api-android.go"
 
+# Build against an isolated, exact wireguard-go module checkout so the UAPI
+# listener cleanup patch is compiled without mutating the Go module cache.
+readonly WG_GO_DIR="$WORK_DIR/wireguard-go-patched"
+readonly WG_GO_COMMIT_PREFIX="f333402bd9cb"
+git clone --filter=blob:none --no-checkout --no-recurse-submodules \
+  https://github.com/WireGuard/wireguard-go.git "$WG_GO_DIR"
+git -C "$WG_GO_DIR" checkout --detach "$WG_GO_COMMIT_PREFIX"
+actual_wg_commit="$(git -C "$WG_GO_DIR" rev-parse HEAD)"
+case "$actual_wg_commit" in
+  "$WG_GO_COMMIT_PREFIX"*) ;;
+  *) echo "Pinned wireguard-go module commit mismatch: $actual_wg_commit"; exit 1 ;;
+esac
+python3 "$GITHUB_WORKSPACE/scripts/ci/patch_wireguard_uapi.py" --source "$WG_GO_DIR/ipc/uapi_linux.go"
+printf '\nreplace golang.zx2c4.com/wireguard => %s\n' "$WG_GO_DIR" >> "$WORK_DIR/tunnel/tools/libwg-go/go.mod"
+
+
 # Build the exact upstream Go userspace library directly with its own Makefile.
 # This deliberately avoids configuring the upstream Android app/UI Gradle build.
 # The GPL wireguard-tools and elf-cleaner submodules are not initialized or built.
