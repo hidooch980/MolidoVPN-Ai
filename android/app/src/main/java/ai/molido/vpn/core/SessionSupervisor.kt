@@ -85,16 +85,26 @@ class SessionSupervisor(
         if (tunOwnership != null) {
             if (lease == null) return false
             val snapshot = tunOwnership.snapshot()
-            if (snapshot.owner != engine || snapshot.generation != lease.generation) return false
+            val alreadyClosedForThisGeneration =
+                snapshot.owner == null &&
+                snapshot.state == TunLeaseState.IDLE &&
+                snapshot.generation == lease.generation
 
-            // A native engine can die while holding a duplicated TUN descriptor.
-            // The lease coordinator then moves directly to CLEANUP_REQUIRED. The
-            // service must close its original descriptor before release, but the
-            // session facade still needs to enter STOPPING so it can complete cleanup.
-            val stopAccepted = if (snapshot.state == TunLeaseState.CLEANUP_REQUIRED) {
-                lease.transport == TunLeaseTransport.DESCRIPTOR_HANDOFF
+            // The service may finish its fail-closed close path before the session
+            // callback is delivered. Accept that exact-generation completion rather
+            // than leaving the facade stuck in RUNNING/FAILED.
+            val stopAccepted = if (alreadyClosedForThisGeneration) {
+                true
             } else {
-                tunOwnership.beginStop(lease)
+                if (snapshot.owner != engine || snapshot.generation != lease.generation) return false
+                // A native engine can die while holding a duplicated TUN descriptor.
+                // The coordinator moves to CLEANUP_REQUIRED; this permits the facade
+                // to enter STOPPING but does not itself confirm descriptor closure.
+                if (snapshot.state == TunLeaseState.CLEANUP_REQUIRED) {
+                    lease.transport == TunLeaseTransport.DESCRIPTOR_HANDOFF
+                } else {
+                    tunOwnership.beginStop(lease)
+                }
             }
             if (!stopAccepted) return false
         }
