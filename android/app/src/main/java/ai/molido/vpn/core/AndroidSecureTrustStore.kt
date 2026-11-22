@@ -51,7 +51,7 @@ class AndroidSecureTrustStore(context: Context) {
         advanceCounter(INSTALLED_VERSION, versionCode)
     }
 
-    private fun pinOnce(name: String, encoded: ByteArray) {
+    private fun pinOnce(name: String, encoded: ByteArray) = synchronized(PROCESS_LOCK) {
         require(encoded.isNotEmpty() && encoded.size <= MAX_PUBLIC_KEY_BYTES)
         val existing = preferences.getString(name, null)
         if (existing != null) {
@@ -117,7 +117,7 @@ class AndroidSecureTrustStore(context: Context) {
         }
     }
 
-    private fun advanceCounter(name: String, value: Long) {
+    private fun advanceCounter(name: String, value: Long) = synchronized(PROCESS_LOCK) {
         require(value > 0)
         val current = readCounter(name)
         require(value > current) { "Rollback or duplicate revision rejected" }
@@ -165,7 +165,7 @@ class AndroidSecureTrustStore(context: Context) {
         }
     }
 
-    private fun encryptionKey(createIfMissing: Boolean = true): SecretKey {
+    private fun encryptionKey(createIfMissing: Boolean = true): SecretKey = synchronized(PROCESS_LOCK) {
         val store = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
         val existing = store.getKey(ENCRYPTION_KEY_ALIAS, null) as? SecretKey
         if (existing != null) return existing
@@ -187,6 +187,10 @@ class AndroidSecureTrustStore(context: Context) {
     }
 
     private companion object {
+        // SharedPreferences updates and Keystore alias creation must be atomic
+        // across all trust-store instances in this application process.
+        val PROCESS_LOCK = Any()
+
         const val PREFERENCES = "molido_trust_store"
         const val ANDROID_KEYSTORE = "AndroidKeyStore"
         const val ENCRYPTION_KEY_ALIAS = "molido.trust.aesgcm.v1"
