@@ -15,6 +15,7 @@ class VpnSessionController(
     private var activeSession: EngineSession? = null
     private var activeOwner: EngineSlot? = null
     private var lastPathDecision: AdaptivePathDecision? = null
+    private var lastNetworkAssessment: NetworkAssessment? = null
     private val pendingEngineFailures = mutableSetOf<EngineSlot>()
 
     /** UI observers receive lifecycle snapshots; callbacks must not block engine work. */
@@ -222,6 +223,32 @@ class VpnSessionController(
         } ?: return null
         record("TUNNEL_HEALTH_${assessment.state.name}", assessment.explanation)
         return assessment
+    }
+
+
+    /**
+     * Consumes an OS network observation. Default-network validation is not proof of
+     * VPN data-plane reachability. Degradation never silently stops the engine or TUN.
+     */
+    @Synchronized
+    fun observeNetworkAssessment(assessment: NetworkAssessment): Boolean {
+        val previous = lastNetworkAssessment
+        lastNetworkAssessment = assessment
+        val changed = previous == null ||
+            previous.status != assessment.status ||
+            previous.transport != assessment.transport ||
+            previous.metered != assessment.metered
+        if (!changed) return false
+        val transport = assessment.transport?.name ?: "unknown"
+        record("NETWORK_PATH_CHANGED", "status=${assessment.status};transport=$transport;metered=${assessment.metered}")
+        if (activeSession != null && supervisor.snapshot().state == SessionState.RUNNING) {
+            if (assessment.status == NetworkAssessmentStatus.VALIDATED) {
+                record("SESSION_NETWORK_VALIDATED", "Android reports a validated default network; VPN reachability remains unverified")
+            } else {
+                record("SESSION_NETWORK_DEGRADED", "Default network is unavailable, unvalidated, stale, or unknown; TUN ownership retained")
+            }
+        }
+        return true
     }
 
     @Synchronized fun snapshot(): SessionSnapshot = supervisor.snapshot()

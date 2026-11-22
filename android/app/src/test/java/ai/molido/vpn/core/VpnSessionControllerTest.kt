@@ -676,4 +676,37 @@ class VpnSessionControllerTest {
         assertNull(controller.observeActiveTunnelHealth())
     }
 
+
+    @Test
+    fun networkPathChangesAreRecordedWithoutClaimingVpnFailureOrInternetReachability() {
+        val diagnostics = DiagnosticsObservabilityCore(enabled = true)
+        val supervisor = SessionSupervisor()
+        val controller = VpnSessionController(
+            supervisor, listOf(FakeAdapter(EngineSlot.WIREGUARD)), diagnostics = diagnostics
+        )
+        assertTrue(controller.connect(EngineSlot.WIREGUARD, "profile"))
+        assertTrue(controller.observeNetworkAssessment(
+            NetworkAssessment(NetworkAssessmentStatus.NOT_VALIDATED, transport = NetworkTransport.CELLULAR)
+        ))
+        assertEquals(SessionState.RUNNING, controller.snapshot().state)
+        assertEquals(EngineSlot.WIREGUARD, supervisor.currentOwner())
+        assertEquals("SESSION_NETWORK_DEGRADED", diagnostics.snapshot().last().code)
+        assertTrue(diagnostics.snapshot().last().detail.contains("TUN ownership retained"))
+    }
+
+    @Test
+    fun identicalNetworkAssessmentDoesNotDuplicateChangeEvents() {
+        val diagnostics = DiagnosticsObservabilityCore(enabled = true)
+        val controller = VpnSessionController(SessionSupervisor(), emptyList(), diagnostics = diagnostics)
+        val assessment = NetworkAssessment(
+            NetworkAssessmentStatus.VALIDATED,
+            transport = NetworkTransport.WIFI,
+            metered = false
+        )
+        assertTrue(controller.observeNetworkAssessment(assessment))
+        assertFalse(controller.observeNetworkAssessment(assessment))
+        assertEquals(1, diagnostics.snapshot().count { it.code == "NETWORK_PATH_CHANGED" })
+    }
+
+
 }

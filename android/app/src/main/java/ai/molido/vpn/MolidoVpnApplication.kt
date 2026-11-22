@@ -23,6 +23,8 @@ import ai.molido.vpn.core.VpnSessionController
 import ai.molido.vpn.engine.wireguard.WireGuardEngineAdapter
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 class MolidoVpnApplication : Application() {
@@ -30,6 +32,7 @@ class MolidoVpnApplication : Application() {
         private set
     lateinit var vpnExecutor: ExecutorService
         private set
+    private lateinit var healthMonitorExecutor: ScheduledExecutorService
     lateinit var networkMonitor: AndroidNetworkObservationMonitor
         private set
     /** Live capability list; entries are derived from adapters actually wired at runtime. */
@@ -81,6 +84,9 @@ class MolidoVpnApplication : Application() {
         vpnExecutor = Executors.newSingleThreadExecutor { task ->
             Thread(task, "molido-vpn-control").apply { isDaemon = true }
         }
+        healthMonitorExecutor = Executors.newSingleThreadScheduledExecutor { task ->
+            Thread(task, "molido-vpn-health-monitor").apply { isDaemon = true }
+        }
         tunOwnershipCoordinator = TunOwnershipCoordinator()
         wireGuardAdapter = WireGuardEngineAdapter(this, tunOwnershipCoordinator)
         val registeredAdapters = listOf(wireGuardAdapter)
@@ -98,6 +104,7 @@ class MolidoVpnApplication : Application() {
             onObservation = { current ->
                 observation.set(current)
                 val assessment = latestNetworkAssessment()
+                vpnSessions.observeNetworkAssessment(assessment)
                 diagnostics.record(
                     "NETWORK_OBSERVED",
                     "status=${assessment.status};transport=${assessment.transport ?: "unknown"}",
@@ -109,10 +116,15 @@ class MolidoVpnApplication : Application() {
         // Keep observing the default network while the VPN session is active,
         // even when the Activity is backgrounded.
         networkMonitor.start()
+        // Single daemon worker and fixed-delay cadence prevent overlapping health samples.
+        healthMonitorExecutor.scheduleWithFixedDelay({
+            runCatching { vpnSessions.observeActiveTunnelHealth() }
+        }, 10L, 15L, TimeUnit.SECONDS)
     }
 
     override fun onTerminate() {
         if (::networkMonitor.isInitialized) networkMonitor.stop()
+        if (::healthMonitorExecutor.isInitialized) healthMonitorExecutor.shutdownNow()
         if (::vpnExecutor.isInitialized) vpnExecutor.shutdown()
         super.onTerminate()
     }
