@@ -22,6 +22,15 @@ class GradleRetryClassificationTests(unittest.TestCase):
             "TRANSIENT_NETWORK",
         )
 
+    def test_gradle_failure_summary_does_not_hide_network_root_cause(self):
+        self.assertEqual(
+            classify_failure(
+                "Could not GET https://repo.maven.apache.org/x: status code 503\\n"
+                "BUILD FAILED in 22s"
+            ),
+            "TRANSIENT_NETWORK",
+        )
+
     def test_assertion_failure_is_never_retried(self):
         self.assertEqual(
             classify_failure(
