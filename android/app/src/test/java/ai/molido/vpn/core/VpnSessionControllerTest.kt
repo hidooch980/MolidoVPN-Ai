@@ -636,7 +636,7 @@ class VpnSessionControllerTest {
         assertTrue(controller.connect(EngineSlot.WIREGUARD, "profile"))
         assertEquals(expected, controller.observeActiveTunnelHealth())
         assertEquals(123_456L, sampledAt)
-        assertEquals("TUNNEL_HEALTH_HANDSHAKE_RECENT", diagnostics.snapshot().single().code)
+        assertEquals("TUNNEL_HEALTH_HANDSHAKE_RECENT", diagnostics.snapshot().last().code)
     }
 
     @Test
@@ -657,7 +657,7 @@ class VpnSessionControllerTest {
         assertEquals(SessionState.RUNNING, controller.snapshot().state)
         assertEquals(EngineSlot.WIREGUARD, supervisor.currentOwner())
         assertEquals("TUNNEL_HEALTH_INVALID_TELEMETRY", diagnostics.snapshot().single().code)
-        assertFalse(diagnostics.snapshot().single().detail.contains("backend diagnostics unavailable"))
+        assertFalse(diagnostics.snapshot().last().detail.contains("backend diagnostics unavailable"))
     }
 
     @Test
