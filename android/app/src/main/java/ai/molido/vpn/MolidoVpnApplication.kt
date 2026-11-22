@@ -3,6 +3,8 @@ package ai.molido.vpn
 import android.app.Application
 import android.net.ConnectivityManager
 import ai.molido.vpn.core.AndroidNetworkObservationMonitor
+import ai.molido.vpn.core.AdaptivePathPolicyCore
+import ai.molido.vpn.core.PathDecision
 import ai.molido.vpn.core.AndroidSecureProfileStore
 import ai.molido.vpn.core.AndroidSecureTrustStore
 import ai.molido.vpn.core.AndroidUpdateTrust
@@ -85,6 +87,7 @@ class MolidoVpnApplication : Application() {
     fun setNetworkPolicy(policy: NetworkPolicy): Boolean {
         if (!networkPolicySettings.save(policy)) return false
         selectedNetworkPolicy.set(policy)
+        resumePendingRecoveryWhenNetworkValidated()
         return true
     }
 
@@ -207,6 +210,7 @@ class MolidoVpnApplication : Application() {
         val token = pendingRecoveryToken ?: return
         val assessment = latestNetworkAssessment()
         if (assessment.status != ai.molido.vpn.core.NetworkAssessmentStatus.VALIDATED) return
+        if (AdaptivePathPolicyCore.evaluate(assessment, selectedNetworkPolicy.get()).decision != PathDecision.ALLOW) return
         val plan = ResilienceRecoveryCore.plan(
             SessionState.FAILED, assessment, attempt = token.attempt - 1
         )
@@ -226,7 +230,9 @@ class MolidoVpnApplication : Application() {
                     pendingRecoveryToken == token && recoveryConfiguration != null
                 }
                 if (stillPending) {
-                    if (latestNetworkAssessment().status != ai.molido.vpn.core.NetworkAssessmentStatus.VALIDATED) {
+                    if (latestNetworkAssessment().status != ai.molido.vpn.core.NetworkAssessmentStatus.VALIDATED ||
+                        AdaptivePathPolicyCore.evaluate(latestNetworkAssessment(), selectedNetworkPolicy.get()).decision != PathDecision.ALLOW
+                    ) {
                         synchronized(recoveryLock) { recoveryScheduled = false }
                         diagnostics.record("RECOVERY_RECHECK_NETWORK", "Network changed before retry; waiting for validation", System.currentTimeMillis())
                     } else {
