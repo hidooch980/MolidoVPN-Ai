@@ -85,7 +85,22 @@ class AndroidUpdateInstaller(
             return sessionId
         } catch (failure: Exception) {
             clearPending(sessionId, "INSTALL_SUBMISSION_FAILED")
-            try { session?.abandon() } catch (_: Exception) { }
+            // createSession() allocates the platform session before openSession().
+            // If opening failed, session is null but the allocated session still exists.
+            // Fall back to the ID-based API if the opened-session abandon path fails.
+            val abandoned = try {
+                if (session != null) {
+                    session.abandon()
+                    true
+                } else {
+                    false
+                }
+            } catch (_: Exception) {
+                false
+            }
+            if (!abandoned) {
+                try { packageInstaller.abandonSession(sessionId) } catch (_: Exception) { }
+            }
             throw failure
         } finally {
             try { session?.close() } catch (_: Exception) { }
