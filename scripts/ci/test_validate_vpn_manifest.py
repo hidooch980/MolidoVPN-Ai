@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.ci.validate_vpn_manifest import validate
+from scripts.ci.validate_vpn_manifest import EXPECTED_VPN_SERVICE, validate
 
 
 class VpnManifestValidationTests(unittest.TestCase):
@@ -16,13 +16,17 @@ class VpnManifestValidationTests(unittest.TestCase):
         temp.close()
         return Path(temp.name)
 
-    def test_accepts_exactly_one_vpn_service(self):
-        path = self._manifest(
-            '<service android:name="example.Vpn"><intent-filter>'
-            '<action android:name="android.net.VpnService"/>'
+    def _expected_service(self, name: str = EXPECTED_VPN_SERVICE, permission: str =
+                          "android.permission.BIND_VPN_SERVICE") -> str:
+        return (
+            f'<service android:name="{name}" android:permission="{permission}">'
+            '<intent-filter><action android:name="android.net.VpnService"/>'
             '</intent-filter></service>'
         )
-        self.assertEqual(["example.Vpn"], validate(path))
+
+    def test_accepts_exact_expected_vpn_service_and_permission(self):
+        path = self._manifest(self._expected_service())
+        self.assertEqual([EXPECTED_VPN_SERVICE], validate(path))
 
     def test_rejects_no_vpn_service(self):
         path = self._manifest('<service android:name="example.Other"/>')
@@ -31,14 +35,22 @@ class VpnManifestValidationTests(unittest.TestCase):
 
     def test_rejects_multiple_vpn_services(self):
         path = self._manifest(
-            '<service android:name="example.One"><intent-filter>'
-            '<action android:name="android.net.VpnService"/>'
-            '</intent-filter></service>'
-            '<service android:name="example.Two"><intent-filter>'
-            '<action android:name="android.net.VpnService"/>'
-            '</intent-filter></service>'
+            self._expected_service()
+            + self._expected_service("example.SecondVpn")
         )
         with self.assertRaisesRegex(ValueError, "found 2"):
+            validate(path)
+
+    def test_rejects_unexpected_vpn_provider(self):
+        path = self._manifest(self._expected_service("example.UnapprovedVpn"))
+        with self.assertRaisesRegex(ValueError, "Expected VPN provider"):
+            validate(path)
+
+    def test_rejects_missing_vpn_binding_permission(self):
+        path = self._manifest(
+            self._expected_service(permission="android.permission.INTERNET")
+        )
+        with self.assertRaisesRegex(ValueError, "must declare permission"):
             validate(path)
 
 
