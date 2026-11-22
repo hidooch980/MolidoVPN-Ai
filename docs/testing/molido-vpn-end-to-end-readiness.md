@@ -12,7 +12,7 @@ This is the master execution tracker. It distinguishes work that exists in sourc
 - [x] Psiphon remains blocked pending GPL-3.0 compliance or written commercial exception.
 - [x] MASQUE/WARP remains blocked pending a documented supported public embedding path and terms.
 - [x] Physical-device and native-engine acceptance procedures are documented.
-- [x] Full automated CI passed on the exact current PR head `61d707c673d29fe9933520eaed65705ff55a09ee`, run [45004213465](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/45004213465) on 2026-11-22. Android unit tests, Android lint, release-variant assembly (CI validation only), Android Keystore instrumentation on emulator, backend/control-plane tests, retry-classifier tests, and pinned WireGuard Go-only source build all completed successfully.
+- [x] Full automated CI passed on source commit `61d707c673d29fe9933520eaed65705ff55a09ee`, immediately before this documentation-only update; the documentation update commit itself has not yet been CI-tested, run [45004213465](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/45004213465) on 2026-11-22. Android unit tests, Android lint, release-variant assembly (CI validation only), Android Keystore instrumentation on emulator, backend/control-plane tests, retry-classifier tests, and pinned WireGuard Go-only source build all completed successfully.
 - [ ] Signed-release verification: the `Build and verify signed Android release` job was skipped in run 45004213465. No signed release artifact or signer fingerprint is proven by that run.
 - [ ] Autonomous CI bug-fix agent job: skipped in run 45004213465; do not describe the system as an autonomous code-repair agent.
 - [ ] Real Android phone acceptance evidence recorded.
@@ -68,7 +68,7 @@ No generic country selector is allowed. Country choices may be shown only when t
 - [ ] Integration tests: real native engine with deterministic local test endpoints and bidirectional TCP/UDP.
 - [ ] Security tests: malformed/oversized config, secret redaction, encrypted storage, DNS/IPv4/IPv6 leakage, fail-closed routing and socket protection.
 - [ ] Stability tests: repeated connect/disconnect, network handover, sustained traffic, resource growth and crash/ANR review.
-- [x] Current PR-head CI: unit tests, lint, release assembly, Keystore emulator instrumentation, backend/control-plane tests, retry-classifier tests and pinned WireGuard Go-only source build passed on SHA `61d707c673d29fe9933520eaed65705ff55a09ee` (run 45004213465). This does not satisfy the physical-device, real-server, descriptor-handoff or signed-release gates.
+- [x] Previous source-revision CI (before this documentation-only update): unit tests, lint, release assembly, Keystore emulator instrumentation, backend/control-plane tests, retry-classifier tests and pinned WireGuard Go-only source build passed on SHA `61d707c673d29fe9933520eaed65705ff55a09ee`; the current documentation-only head still requires a fresh CI run (run 45004213465). This does not satisfy the physical-device, real-server, descriptor-handoff or signed-release gates.
 - [ ] CI must pass on the exact PR head before review/merge. CI build success alone does not imply device or production readiness.
 
 ## Workstream E — signed release and security review
