@@ -209,7 +209,8 @@ class VpnSessionController(
     @Synchronized
     fun reportActiveEngineFailure(): Boolean {
         val owner = activeOwner ?: return false
-        if (activeSession == null || !supervisor.markFailed(owner)) return false
+        if (activeSession == null || supervisor.snapshot().state != SessionState.RUNNING) return false
+        if (!supervisor.markFailed(owner)) return false
         record("ENGINE_SESSION_FAILED", "Active engine reported failure; exclusive ownership retained")
         publishState()
         return true
