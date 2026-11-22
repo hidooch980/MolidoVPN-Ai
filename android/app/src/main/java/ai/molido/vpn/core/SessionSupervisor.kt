@@ -79,6 +79,7 @@ class SessionSupervisor(
         if (activeEngine != engine) return false
         if (state != SessionState.RESERVED &&
             state != SessionState.RUNNING &&
+            state != SessionState.STOPPING &&
             state != SessionState.FAILED
         ) return false
         val lease = activeLease
