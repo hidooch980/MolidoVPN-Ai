@@ -29,7 +29,7 @@ class ControlPlaneRequestPolicyBoundaryTest {
 
     @Test
     fun rejectsNonAsciiAndWhitespaceTokenCharacters() {
-        listOf("token with-space", "token\\u00a0nbsp", "token\\u2003em-space", "tökén").forEach { token ->
+        listOf("token with-space", "token${0x00A0.toChar()}nbsp", "token${0x2003.toChar()}em-space", "tökén").forEach { token ->
             assertThrows(IllegalArgumentException::class.java) {
                 ControlPlaneRequestPolicy.validateDeviceToken(token)
             }
