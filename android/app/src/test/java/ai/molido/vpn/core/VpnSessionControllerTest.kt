@@ -569,4 +569,45 @@ class VpnSessionControllerTest {
         assertEquals(TunLeaseState.IDLE, coordinator.snapshot().state)
     }
 
+
+    @Test
+    fun failureCallbackDuringStopDoesNotBreakRetryAfterStopThrows() {
+        val supervisor = SessionSupervisor()
+        var failureListener: (() -> Unit)? = null
+        var stopCalls = 0
+        val session = object : EngineSession {
+            override fun stop() {
+                stopCalls += 1
+                // Simulate a DOWN/process-failure callback delivered synchronously
+                // while disconnect() is already executing its stop operation.
+                failureListener?.invoke()
+                if (stopCalls == 1) error("first cleanup attempt failed")
+            }
+        }
+        val adapter = object : EngineAdapter, EngineFailureAwareAdapter {
+            override val slot = EngineSlot.WIREGUARD
+            override fun setFailureListener(listener: (() -> Unit)?) {
+                failureListener = listener
+            }
+            override fun start(configuration: String): EngineSession = session
+        }
+        val controller = VpnSessionController(supervisor, listOf(adapter))
+
+        assertTrue(controller.connect(EngineSlot.WIREGUARD, "profile"))
+        try {
+            controller.disconnect()
+            fail("Expected first cleanup attempt to fail")
+        } catch (_: IllegalStateException) {
+            // The failed stop must retain the owner and permit a second attempt.
+        }
+        assertEquals(1, stopCalls)
+        assertEquals(SessionState.FAILED, controller.snapshot().state)
+        assertEquals(EngineSlot.WIREGUARD, supervisor.currentOwner())
+
+        assertTrue(controller.disconnect())
+        assertEquals(2, stopCalls)
+        assertEquals(SessionState.IDLE, controller.snapshot().state)
+        assertNull(supervisor.currentOwner())
+    }
+
 }
