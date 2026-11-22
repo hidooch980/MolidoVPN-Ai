@@ -12,6 +12,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.security.KeyPairGenerator
 import java.security.KeyStore
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import javax.crypto.AEADBadTagException
 
 @RunWith(AndroidJUnit4::class)
@@ -67,6 +70,81 @@ class AndroidSecureTrustStoreTest {
         assertRejected { store.advanceConfigurationRevision(3L) }
         assertRejected { store.advanceInstalledVersionCode(12L) }
         assertRejected { store.advanceInstalledVersionCode(11L) }
+    }
+
+    @Test
+    fun concurrentInstancesCannotReplaceAnInitiallyUnpinnedKey() {
+        val first = generatePublicKey()
+        val second = generatePublicKey()
+        val otherStore = AndroidSecureTrustStore(context)
+        val gate = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val firstResult = executor.submit<Boolean> {
+                gate.await()
+                try {
+                    store.pinControlPlanePublicKey(first.encoded)
+                    true
+                } catch (_: IllegalArgumentException) {
+                    false
+                }
+            }
+            val secondResult = executor.submit<Boolean> {
+                gate.await()
+                try {
+                    otherStore.pinControlPlanePublicKey(second.encoded)
+                    true
+                } catch (_: IllegalArgumentException) {
+                    false
+                }
+            }
+            gate.countDown()
+            val successes = listOf(
+                firstResult.get(10, TimeUnit.SECONDS),
+                secondResult.get(10, TimeUnit.SECONDS)
+            ).count { it }
+            assertEquals("Exactly one competing key pin must succeed", 1, successes)
+            val persisted = store.loadControlPlanePublicKey().encoded
+            assertTrue(persisted.contentEquals(first.encoded) || persisted.contentEquals(second.encoded))
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun concurrentInstancesCannotCommitTheSameMonotonicRevisionTwice() {
+        val otherStore = AndroidSecureTrustStore(context)
+        val gate = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val firstResult = executor.submit<Boolean> {
+                gate.await()
+                try {
+                    store.advanceConfigurationRevision(4L)
+                    true
+                } catch (_: IllegalArgumentException) {
+                    false
+                }
+            }
+            val secondResult = executor.submit<Boolean> {
+                gate.await()
+                try {
+                    otherStore.advanceConfigurationRevision(4L)
+                    true
+                } catch (_: IllegalArgumentException) {
+                    false
+                }
+            }
+            gate.countDown()
+            val successes = listOf(
+                firstResult.get(10, TimeUnit.SECONDS),
+                secondResult.get(10, TimeUnit.SECONDS)
+            ).count { it }
+            assertEquals("Only one concurrent monotonic update may succeed", 1, successes)
+            assertEquals(4L, store.currentConfigurationRevision())
+        } finally {
+            executor.shutdownNow()
+        }
     }
 
     @Test
