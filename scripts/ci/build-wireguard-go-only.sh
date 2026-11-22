@@ -28,6 +28,9 @@ if [ "$actual_tag" != "$EXPECTED_TAG_OBJECT" ] || [ "$actual_commit" != "$EXPECT
 fi
 git -C "$WORK_DIR" checkout --detach "$EXPECTED_COMMIT"
 
+# Apply a strict patch to the exact pinned Android entry point before native compilation.
+python3 "$GITHUB_WORKSPACE/scripts/ci/patch_wireguard_android.py" --source "$WORK_DIR/tunnel/tools/libwg-go/api-android.go"
+
 # Build the exact upstream Go userspace library directly with its own Makefile.
 # This deliberately avoids configuring the upstream Android app/UI Gradle build.
 # The GPL wireguard-tools and elf-cleaner submodules are not initialized or built.
