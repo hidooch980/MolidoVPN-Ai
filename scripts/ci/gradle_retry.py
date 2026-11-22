@@ -22,7 +22,7 @@ _TRANSIENT_FAILURES = (
 # A deterministic build/test failure must never be retried just because an earlier
 # line happened to mention a transient repository warning.
 _DETERMINISTIC_FAILURES = (
-    re.compile(r"status code 404|HTTP 404|Not Found", re.IGNORECASE),
+    re.compile(r"status code 404|HTTP 404|404 Not Found", re.IGNORECASE),
     re.compile(r"AssertionError|There were failing tests", re.IGNORECASE),
     re.compile(r"Unresolved reference|Compilation error|e: file://", re.IGNORECASE),
     re.compile(r"Could not compile .*?\.(?:kt|java)", re.IGNORECASE),
@@ -43,7 +43,7 @@ def classify_failure(output_tail: str) -> str:
     # Retry only when at least five distinct coordinates are missing AND Gradle
     # emitted repository search diagnostics; a single missing artifact is not transient.
     missing_coordinates = set(re.findall(
-        r"Could not find\\s+([A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+:[A-Za-z0-9_.+-]+)\\.",
+        r"Could not find\s+([A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+:[A-Za-z0-9_.+-]+)\.",
         excerpt,
         re.IGNORECASE,
     ))
