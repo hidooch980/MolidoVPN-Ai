@@ -84,22 +84,13 @@ class AndroidUpdateInstaller(
             session.commit(statusPendingIntent.intentSender)
             return sessionId
         } catch (failure: Exception) {
-            clearPending(sessionId, "INSTALL_SUBMISSION_FAILED")
             // createSession() allocates the platform session before openSession().
             // If opening failed, session is null but the allocated session still exists.
-            // Fall back to the ID-based API if the opened-session abandon path fails.
-            val abandoned = try {
-                if (session != null) {
-                    session.abandon()
-                    true
-                } else {
-                    false
-                }
-            } catch (_: Exception) {
-                false
-            }
-            if (!abandoned) {
-                try { packageInstaller.abandonSession(sessionId) } catch (_: Exception) { }
+            // Do not clear the persisted pending marker unless abandonment succeeds.
+            if (abandonSession(sessionId, session)) {
+                clearPending(sessionId, "INSTALL_SUBMISSION_FAILED")
+            } else {
+                markCleanupPending(sessionId, "INSTALL_SUBMISSION_CLEANUP_PENDING")
             }
             throw failure
         } finally {
@@ -117,7 +108,11 @@ class AndroidUpdateInstaller(
         when (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 val confirmation = parcelableIntent(intent, Intent.EXTRA_INTENT) ?: run {
-                    clearPending(sessionId, "USER_CONFIRMATION_INTENT_MISSING")
+                    if (abandonSession(sessionId, null)) {
+                        clearPending(sessionId, "USER_CONFIRMATION_INTENT_MISSING")
+                    } else {
+                        markCleanupPending(sessionId, "USER_CONFIRMATION_CLEANUP_PENDING")
+                    }
                     return
                 }
                 confirmation.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -128,22 +123,14 @@ class AndroidUpdateInstaller(
                             .putString(KEY_LAST_RESULT, "WAITING_FOR_USER_CONFIRMATION")
                             .commit()
                     ) { "Unable to persist update confirmation state" }
-                } catch (failure: Exception) {
+                } catch (_: Exception) {
                     // A failed confirmation launch must not leave an unfinishable install
                     // session blocking every later update. Keep the pending marker unless
                     // PackageInstaller confirms that the session was abandoned.
-                    val abandoned = try {
-                        packageInstaller.abandonSession(sessionId)
-                        true
-                    } catch (_: Exception) {
-                        false
-                    }
-                    if (abandoned) {
+                    if (abandonSession(sessionId, null)) {
                         clearPending(sessionId, "USER_CONFIRMATION_LAUNCH_FAILED")
                     } else {
-                        preferences.edit()
-                            .putString(KEY_LAST_RESULT, "USER_CONFIRMATION_CLEANUP_PENDING")
-                            .commit()
+                        markCleanupPending(sessionId, "USER_CONFIRMATION_CLEANUP_PENDING")
                     }
                 }
             }
@@ -194,6 +181,34 @@ class AndroidUpdateInstaller(
             return true
         }
         return !clearPending(pendingSessionId, "STALE_PENDING_STATE_RECOVERED")
+    }
+
+    private fun abandonSession(
+        sessionId: Int,
+        openedSession: PackageInstaller.Session?
+    ): Boolean {
+        val abandonedThroughSession = try {
+            if (openedSession != null) {
+                openedSession.abandon()
+                true
+            } else {
+                false
+            }
+        } catch (_: Exception) {
+            false
+        }
+        if (abandonedThroughSession) return true
+        return try {
+            packageInstaller.abandonSession(sessionId)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun markCleanupPending(sessionId: Int, result: String) {
+        if (preferences.getInt(KEY_PENDING_SESSION, NO_SESSION) != sessionId) return
+        preferences.edit().putString(KEY_LAST_RESULT, result).commit()
     }
 
     private fun clearPending(sessionId: Int, result: String): Boolean {
