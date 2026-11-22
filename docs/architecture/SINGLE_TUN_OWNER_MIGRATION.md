@@ -95,3 +95,25 @@ The native integration blocker is narrower than “WireGuard cannot accept an ex
 This source inspection establishes a feasible native FD entry point; it does **not** establish that Molido's wrapper, central service, Binder authentication, socket protection, or cleanup protocol has been implemented. The pinned source tag matching the current AAR remains the required baseline unless a separately reviewed upgrade is approved. No second VPN service may be declared during the transition, and the AAR dependency must not be removed until the replacement is built and tested atomically.
 
 Phase A's upstream FD API inspection is now source-verified. Phase B/C implementation and all runtime/device acceptance gates remain open.
+
+## 9. Additional upstream failure-path and concurrency audit (2026-11-22)
+
+Reviewed the complete api-android.go and GoBackend.java files at the exact pinned upstream commit 09b75c2bd37f749e2a8c85876394854113c74be7. These are source-level findings; no runtime patch is claimed here.
+
+### Confirmed findings requiring a reviewed source-fork patch
+
+1. **Nil uapiFile close on startup failure:** ipc.UAPIOpen(name) can return an error before assigning a usable file. The later device.Up() failure branch unconditionally calls uapiFile.Close(). If the earlier open failed, this can panic while handling the original startup failure. The same unconditional close appears in the handle-exhaustion branch. The fork must use explicit nullable ownership and one idempotent cleanup path.
+2. **Partial cleanup after IpcSet failure:** after tun.CreateUnmonitoredTUNFromFD succeeds, device.NewDevice(...) is created. If device.IpcSet(settings) fails, upstream directly calls unix.Close(tunFd) and returns without calling device.Close(). A fork must audit the exact tun.Device/device.Device close semantics and ensure all device resources are released exactly once; do not add a second close blindly because that can create a double-close/FD-reuse hazard.
+3. **Unsynchronized global handle registry:** tunnelHandles is a package-global Go map accessed by wgTurnOn, wgTurnOff, wgGetSocketV4, wgGetSocketV6, and wgGetConfig without a mutex. Concurrent JNI start/stop/diagnostic calls can race map reads/writes. The fork must serialize lifecycle and handle operations or protect the registry with a mutex, and add race-focused tests where the build environment supports them.
+4. **Socket protection result ignored:** GoBackend.java calls service.protect() for both socket families without checking the returned booleans, and passes the values returned by wgGetSocketV4/V6 without first rejecting invalid negative descriptors. The Molido wrapper must validate each available socket FD, check each protection result, fail closed, stop the partially started handle, and retain the TUN lease until cleanup is confirmed.
+5. **Error-path ownership contract:** wgTurnOn closes the supplied FD on TUN attach failure and transfers ownership to the Go TUN device on successful attach; the IpcSet failure path also closes the FD directly. The custom JNI/Java wrapper must encode these outcomes explicitly so that Java, Binder, and Go do not each believe they own the same descriptor. Every path must close each descriptor copy exactly once.
+
+### Required tests before accepting the fork
+
+- UAPI open failure followed by device.Up() failure must return a controlled error without panic.
+- UAPI listen failure, device.Up() failure, handle exhaustion, and IpcSet failure must leave no live device, listener, or leaked descriptor.
+- Concurrent start/stop/socket-query/config-query operations must be serialized or pass Go race detection without concurrent map access.
+- Missing IPv4/IPv6 socket descriptors and protect(fd) == false must fail closed with verified native shutdown and descriptor cleanup.
+- Repeated start/stop, cancellation during startup, process death, and Binder rejection must preserve generation ownership and never release the central TUN lease before cleanup acknowledgement.
+
+These fixes belong in a minimal pinned-source fork and wrapper review. Do not patch the upstream AAR through reflection, do not introduce a second VpnService, and do not remove the current AAR until the replacement path is built and acceptance-tested.
