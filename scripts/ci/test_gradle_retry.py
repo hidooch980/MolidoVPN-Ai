@@ -1,6 +1,6 @@
 import unittest
 
-from scripts.ci.gradle_retry import classify_failure
+from gradle_retry import classify_failure
 
 
 class GradleRetryClassificationTests(unittest.TestCase):
