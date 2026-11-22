@@ -262,4 +262,23 @@ class SessionSupervisorTest {
         assertEquals(SessionState.IDLE, supervisor.snapshot().state)
     }
 
+
+    @Test
+    fun beginStoppingIsIdempotentForTheSameOwnedGeneration() {
+        val coordinator = TunOwnershipCoordinator()
+        val supervisor = SessionSupervisor(coordinator)
+
+        assertTrue(supervisor.claim(EngineSlot.WIREGUARD))
+        val lease = supervisor.tunLeaseFor(EngineSlot.WIREGUARD)!!
+        assertTrue(coordinator.markBackendActive(lease))
+        assertTrue(supervisor.markRunning(EngineSlot.WIREGUARD))
+        assertTrue(supervisor.beginStopping(EngineSlot.WIREGUARD))
+        assertTrue(supervisor.beginStopping(EngineSlot.WIREGUARD))
+        assertEquals(SessionState.STOPPING, supervisor.snapshot().state)
+        assertEquals(TunLeaseState.STOPPING, coordinator.snapshot().state)
+
+        assertTrue(coordinator.confirmBackendStopped(lease))
+        assertTrue(supervisor.release(EngineSlot.WIREGUARD))
+    }
+
 }
