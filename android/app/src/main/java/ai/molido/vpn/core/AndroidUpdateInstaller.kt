@@ -37,7 +37,7 @@ class AndroidUpdateInstaller(
         }
         verifyApkIdentityAndVersion(manifest.versionCode, artifact)
         val admission = UpdateInstallAdmissionPolicy.evaluate(
-            hasPendingInstall = preferences.getInt(KEY_PENDING_SESSION, NO_SESSION) != NO_SESSION,
+            hasPendingInstall = hasPendingInstall(),
             candidateVersionCode = manifest.versionCode,
             installedVersionCode = updateTrust.installedVersionCode(),
             trustedVersionCode = updateTrust.trustedVersionCode()
@@ -121,8 +121,31 @@ class AndroidUpdateInstaller(
                     return
                 }
                 confirmation.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                appContext.startActivity(confirmation)
-                preferences.edit().putString(KEY_LAST_RESULT, "WAITING_FOR_USER_CONFIRMATION").commit()
+                try {
+                    appContext.startActivity(confirmation)
+                    check(
+                        preferences.edit()
+                            .putString(KEY_LAST_RESULT, "WAITING_FOR_USER_CONFIRMATION")
+                            .commit()
+                    ) { "Unable to persist update confirmation state" }
+                } catch (failure: Exception) {
+                    // A failed confirmation launch must not leave an unfinishable install
+                    // session blocking every later update. Keep the pending marker unless
+                    // PackageInstaller confirms that the session was abandoned.
+                    val abandoned = try {
+                        packageInstaller.abandonSession(sessionId)
+                        true
+                    } catch (_: Exception) {
+                        false
+                    }
+                    if (abandoned) {
+                        clearPending(sessionId, "USER_CONFIRMATION_LAUNCH_FAILED")
+                    } else {
+                        preferences.edit()
+                            .putString(KEY_LAST_RESULT, "USER_CONFIRMATION_CLEANUP_PENDING")
+                            .commit()
+                    }
+                }
             }
             PackageInstaller.STATUS_SUCCESS -> {
                 val expected = preferences.getLong(KEY_PENDING_VERSION, 0L)
@@ -158,9 +181,24 @@ class AndroidUpdateInstaller(
         }
     }
 
-    private fun clearPending(sessionId: Int, result: String) {
-        if (preferences.getInt(KEY_PENDING_SESSION, NO_SESSION) != sessionId) return
-        preferences.edit()
+    /**
+     * Reconcile persisted pending state with PackageInstaller's live session list.
+     * A terminal/abandoned session whose callback was lost must not block updates forever.
+     * If state cannot be durably cleared, remain fail-closed.
+     */
+    private fun hasPendingInstall(): Boolean {
+        val pendingSessionId = preferences.getInt(KEY_PENDING_SESSION, NO_SESSION)
+        if (pendingSessionId == NO_SESSION) return false
+        val activeSessionIds = packageInstaller.mySessions.map { it.sessionId }
+        if (PendingInstallRecoveryPolicy.isSessionActive(pendingSessionId, activeSessionIds)) {
+            return true
+        }
+        return !clearPending(pendingSessionId, "STALE_PENDING_STATE_RECOVERED")
+    }
+
+    private fun clearPending(sessionId: Int, result: String): Boolean {
+        if (preferences.getInt(KEY_PENDING_SESSION, NO_SESSION) != sessionId) return true
+        return preferences.edit()
             .remove(KEY_PENDING_SESSION)
             .remove(KEY_PENDING_VERSION)
             .putString(KEY_LAST_RESULT, result)
