@@ -134,6 +134,12 @@ jobs:
           go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20260217195705-b56b3793a9c4
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
           "$(go env GOPATH)/bin/gomobile" init
+      - name: Apply Molido fail-closed wrapper lifecycle patch
+        working-directory: third_party/AndroidLibXrayLite
+        run: python3 ../../scripts/ci/patch_xray_wrapper.py --source-dir .
+      - name: Test patched Android wrapper
+        working-directory: third_party/AndroidLibXrayLite
+        run: go test ./...
       - name: Build Android ARM64 AAR (no release or signing)
         working-directory: third_party/AndroidLibXrayLite
         run: |
@@ -148,6 +154,12 @@ jobs:
             echo "Unexpected non-ARM64 native ABI found in AAR"
             exit 1
           fi
+          unzip -p "$AAR" jni/arm64-v8a/libgojni.so > "$RUNNER_TEMP/libgojni.so"
+          readelf -h "$RUNNER_TEMP/libgojni.so" > elf-header.txt
+          grep -q "Class:.*ELF64" elf-header.txt
+          grep -q "Machine:.*AArch64" elf-header.txt
+          go version -m "$RUNNER_TEMP/libgojni.so" > go-build-info.txt
+          grep -q "GOARCH=arm64" go-build-info.txt || grep -q "build.*GOARCH=arm64" go-build-info.txt
           sha256sum "$AAR" > aar.sha256
           printf 'aar=%s\n' "$AAR" >> build-inputs.txt
           cat aar.sha256 >> build-inputs.txt
@@ -161,6 +173,8 @@ jobs:
             third_party/AndroidLibXrayLite/aar-entries.txt
             third_party/AndroidLibXrayLite/build-inputs.txt
             third_party/AndroidLibXrayLite/module-inventory.txt
+            third_party/AndroidLibXrayLite/elf-header.txt
+            third_party/AndroidLibXrayLite/go-build-info.txt
           if-no-files-found: error
           retention-days: 7
 
