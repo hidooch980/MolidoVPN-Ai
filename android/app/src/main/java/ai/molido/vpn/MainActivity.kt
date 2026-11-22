@@ -488,6 +488,7 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this, "بازنشانی ایمن وضعیت بازیابی ناموفق بود؛ اتصال آغاز نشد.", Toast.LENGTH_LONG).show()
             return
         }
+        molidoApp.setRecoveryConfiguration(configuration)
         setControlsEnabled(false)
         molidoApp.vpnExecutor.execute {
             try {
@@ -504,6 +505,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun disconnectTunnel() {
+        molidoApp.clearRecoveryConfiguration()
         setControlsEnabled(false)
         molidoApp.vpnExecutor.execute {
             try {

@@ -1,5 +1,7 @@
 package ai.molido.vpn.core
 
+import java.util.concurrent.CopyOnWriteArrayList
+
 class VpnSessionController(
     private val supervisor: SessionSupervisor,
     adapters: Collection<EngineAdapter>,
@@ -18,6 +20,7 @@ class VpnSessionController(
     private var lastPathDecision: AdaptivePathDecision? = null
     private var lastNetworkAssessment: NetworkAssessment? = null
     private val pendingEngineFailures = mutableSetOf<EngineSlot>()
+    private val stateObservers = CopyOnWriteArrayList<(SessionSnapshot) -> Unit>()
 
     /** UI observers receive lifecycle snapshots; callbacks must not block engine work. */
     @Volatile
@@ -28,7 +31,18 @@ class VpnSessionController(
         }
 
     private fun publishState() {
-        notifyStateObserver(onSessionStateChanged, supervisor.snapshot())
+        val current = supervisor.snapshot()
+        notifyStateObserver(onSessionStateChanged, current)
+        stateObservers.forEach { observer -> notifyStateObserver(observer, current) }
+    }
+
+    fun addStateObserver(observer: (SessionSnapshot) -> Unit) {
+        stateObservers.addIfAbsent(observer)
+        notifyStateObserver(observer, supervisor.snapshot())
+    }
+
+    fun removeStateObserver(observer: (SessionSnapshot) -> Unit) {
+        stateObservers.remove(observer)
     }
 
     /**
