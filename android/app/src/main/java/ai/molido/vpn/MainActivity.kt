@@ -484,6 +484,10 @@ class MainActivity : ComponentActivity() {
 
     private fun connectUsingLoadedProfile() {
         val configuration = profileText ?: return
+        if (!molidoApp.vpnSessions.resetRecoveryAfterExplicitUserAction()) {
+            Toast.makeText(this, "بازنشانی ایمن وضعیت بازیابی ناموفق بود؛ اتصال آغاز نشد.", Toast.LENGTH_LONG).show()
+            return
+        }
         setControlsEnabled(false)
         molidoApp.vpnExecutor.execute {
             try {

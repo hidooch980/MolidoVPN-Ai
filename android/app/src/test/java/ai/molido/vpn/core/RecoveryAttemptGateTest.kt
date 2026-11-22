@@ -110,4 +110,17 @@ class RecoveryAttemptGateTest {
         }
     }
 
+
+    @Test
+    fun staleCompletionCannotMatchTokenIssuedAfterExplicitReset() {
+        val gate = RecoveryAttemptGate(maxAttempts = 2)
+        val oldToken = gate.tryStart()!!
+        assertTrue(gate.resetAfterExplicitUserAction())
+        val newToken = gate.tryStart()!!
+        assertFalse(oldToken == newToken)
+        assertFalse(gate.complete(oldToken, connected = true))
+        assertTrue(gate.isInFlight())
+        assertTrue(gate.complete(newToken, connected = false))
+    }
+
 }

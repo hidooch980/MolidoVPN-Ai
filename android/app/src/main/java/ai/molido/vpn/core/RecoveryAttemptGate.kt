@@ -74,7 +74,8 @@ class RecoveryAttemptGate(
     fun resetAfterExplicitUserAction(): Boolean {
         val next = PersistedRecoveryAttemptState()
         if (store != null && !runCatching { store.write(next) }.getOrDefault(false)) return false
-        generation = 0
+        // Keep generations monotonic so a late callback from before reset cannot
+        // accidentally match a newly issued token.
         started = 0
         inFlight = null
         interrupted = false

@@ -289,6 +289,10 @@ class VpnSessionController(
     @Synchronized
     fun recoveryAttemptsStarted(): Int = recoveryAttemptGate.attemptsStarted()
 
+    /** Reset a process-death lockout only from an explicit user-initiated connect flow. */
+    @Synchronized
+    fun resetRecoveryAfterExplicitUserAction(): Boolean = recoveryAttemptGate.resetAfterExplicitUserAction()
+
     @Synchronized fun snapshot(): SessionSnapshot = supervisor.snapshot()
     @Synchronized fun latestPathDecision(): AdaptivePathDecision? = lastPathDecision
 
