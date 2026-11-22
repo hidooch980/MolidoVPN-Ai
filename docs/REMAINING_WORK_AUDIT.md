@@ -192,3 +192,52 @@ This section supersedes the earlier section 6 where its head/CI claims differ.
 6. Only then perform authorized physical-device/server data-plane, DNS, IPv4/IPv6, leak, handover and sustained-stability acceptance.
 
 No root cause is assigned to the cancellation because GitHub returned no jobs or logs for run #357. Do not speculate that it was caused by a source-code defect.
+
+
+## 7. Verified status update — 2026-11-22, CI #373
+
+Audit basis: branch `feature/wireguard-runtime-diagnostics`, commit `106858dde98441b0413cf08e97b05853f333ac51`, GitHub Actions run #373 (`45010985231`).
+
+### CI evidence on this exact commit
+
+- Overall workflow conclusion: **success**.
+- Android source validation: **success**. The workflow completed the Gradle retry-classification tests, `:android:app:testDebugUnitTest`, Android lint, and `:android:app:assembleRelease`. Release assembly here is CI validation only; it is not a distributed or signed production release.
+- Android Keystore instrumentation: **success**. API 35 emulator booted with hardware acceleration and all 24 connected instrumentation tests completed successfully.
+- Pinned WireGuard Go-only source build: **success**.
+- Self-hosted control-plane tests and CI retry-classification tests: **success**.
+- Signed Android release verification: **skipped** on the pull-request event. No production signing or certificate-fingerprint proof is implied.
+- Autonomous CI bug-fix agent: **skipped**; classification tests do not prove autonomous source repair.
+- Earlier CI #366 on an intermediate commit failed 5 of 120 unit tests. Those failures exposed lifecycle races in STOPPING, cleanup retry, and late engine-failure callbacks. Follow-up commits were added, and CI #373 on the final head passed the configured source, lint, release-assembly, backend, native-build and emulator checks.
+
+### Lifecycle fixes since the prior audit
+
+- Process death after descriptor handoff no longer lets the session supervisor manufacture service-close acknowledgement.
+- Startup rollback refuses to release a descriptor-handoff lease while cleanup is uncertain; the central service must independently close its retained descriptor.
+- A service cleanup completed before the session callback is accepted only for the exact same generation.
+- A failed stop remains retryable; asynchronous engine-failure callbacks during STOPPING are ignored by the controller.
+- Repeated stop requests for the same generation are covered as an idempotency case.
+- Regression coverage was added for process death during startup/running, delayed failure callbacks, retry after failed stop, and service-close ordering.
+
+### Architecture boundary remains unchanged
+
+The successful CI does **not** mean the central VPN architecture is complete. Source review at this commit confirms:
+
+- `WireGuardEngineAdapter` still creates upstream `GoBackend(context.applicationContext)`; upstream `GoBackend.VpnService` remains the TUN owner.
+- `NativeEngineProcessService` is a status-only `NOT_IMPLEMENTED` scaffold. It does not accept a descriptor, authenticate engine commands, or run packet I/O.
+- The manifest still relies on the AAR-merged upstream `GoBackend.VpnService`; there is no app-owned `MolidoVpnService` yet.
+- The in-process `TunOwnershipCoordinator` is a lifecycle guard, not a real FD broker or cross-process authority.
+- Only WireGuard is registered. The other five approved engine slots remain unavailable/blocked as recorded above.
+- Physical-device data-plane acceptance (authorized endpoint, bidirectional traffic, IPv4/IPv6, DNS, leak checks, network handover and sustained stability) is not performed by this CI run.
+- Signed-release verification remains skipped; no production APK is approved.
+
+### Next execution order after CI #373
+
+1. Pin and audit official WireGuard Android source provenance, submodules, licenses and build inputs.
+2. Implement a source-built backend that consumes the central service's TUN descriptor through a documented API; do not use reflection or private AAR hooks.
+3. Add the app-owned `MolidoVpnService` and ensure it is the only `VpnService` and only caller of `Builder.establish()`.
+4. Add authenticated/versioned Binder protocol with UID, PID, engine slot, session, generation and one-time capability checks.
+5. Add real descriptor handoff/close instrumentation and manifest assertion; exercise cancellation, partial start, wrong identity, stale generation, Binder death and simultaneous start/stop.
+6. Migrate WireGuard atomically to the source-built backend, then repeat all CI checks.
+7. Only after the above, run authorized physical-device data-plane and leak acceptance.
+
+PR #4 remains open, Draft and unmerged. No release, signing-key rotation, external infrastructure, paid service or production deployment is authorized by this audit.
