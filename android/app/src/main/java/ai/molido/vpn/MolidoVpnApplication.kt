@@ -249,7 +249,8 @@ class MolidoVpnApplication : Application() {
     }
 
     private fun finishRecoveryAttempt(token: RecoveryAttemptToken, connected: Boolean) {
-        vpnSessions.completeRecoveryAttempt(token, connected)
+        val persisted = vpnSessions.completeRecoveryAttempt(token, connected)
+        if (!persisted) diagnostics.record("RECOVERY_STATE_PERSIST_FAILED", "Retry state could not be committed; automatic retries remain fail-closed")
         synchronized(recoveryLock) {
             if (pendingRecoveryToken == token) pendingRecoveryToken = null
             recoveryScheduled = false
