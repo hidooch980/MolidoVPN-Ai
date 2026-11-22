@@ -235,4 +235,27 @@ class SessionSupervisorTest {
         assertEquals(SessionState.IDLE, supervisor.snapshot().state)
     }
 
+
+    @Test
+    fun serviceCleanupMayCompleteBeforeSessionStopCallbackArrives() {
+        val coordinator = TunOwnershipCoordinator()
+        val supervisor = SessionSupervisor(coordinator)
+
+        assertTrue(supervisor.claim(EngineSlot.V2RAY_XRAY))
+        val lease = supervisor.tunLeaseFor(EngineSlot.V2RAY_XRAY)!!
+        assertTrue(coordinator.markDescriptorTransferred(lease, 10424))
+        assertTrue(supervisor.markRunning(EngineSlot.V2RAY_XRAY))
+
+        // Process death and central descriptor close can be observed before the
+        // session controller receives its failure/stop callback.
+        assertTrue(coordinator.reportEngineProcessDeath(lease, 10424))
+        assertTrue(coordinator.confirmServiceTunClosed(lease))
+        assertEquals(TunLeaseState.IDLE, coordinator.snapshot().state)
+
+        assertTrue(supervisor.beginStopping(EngineSlot.V2RAY_XRAY))
+        assertEquals(SessionState.STOPPING, supervisor.snapshot().state)
+        assertTrue(supervisor.release(EngineSlot.V2RAY_XRAY))
+        assertEquals(SessionState.IDLE, supervisor.snapshot().state)
+    }
+
 }
