@@ -123,3 +123,16 @@ PR #4 remains **Draft / open / unmerged**. Keep it Draft until the central TUN m
 
 
 - Additional pinned-source audit finding: `ipc.UAPIListen` calls `net.FileListener`, which duplicates the listener FD; the original `uapiFile` is not closed or retained on successful WireGuard startup. A normal stop therefore leaks the original UAPI descriptor. This is documented with the upstream blob and required regression tests in `docs/architecture/SINGLE_TUN_OWNER_MIGRATION.md` section 10. The WireGuard fork patch must close the original after successful listener creation and audit all partial inotify failure cleanup paths. No runtime fix is claimed.
+
+
+## Latest pinned WireGuard UAPI cleanup patch CI — 2026-11-22
+
+- PR head `4e9db4326017c0f8670b8d3001e76976b0033d65`.
+- [Push run 45040345839](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/45040345839) and [PR run 45040353154](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/45040353154): all required jobs completed successfully.
+- Both runs passed strict Android `api-android.go` patch transformer tests, pinned `ipc/uapi_linux.go` cleanup transformer tests, and pinned WireGuard Go-only native source build.
+- Both runs passed Android source validation, manifest single-VPN-service guard, release-variant assembly validation, debug test APK build/signature verification, Xray ARM64 AAR build validation, control-plane tests, and Android Keystore emulator instrumentation. Emulator logs confirm 24 tests started, 24 finished, BUILD SUCCESSFUL.
+- Signed release job was skipped by design for pull-request events. No Stable APK was produced or approved.
+- UAPI patch closes the returned listener on inotify initialization failure; closes inotify FD and listener on watch-registration failure; and closes inotify FD and listener on RWCancel initialization failure. This is source-transformer and native-build CI evidence only; no Android runtime FD-count or repeated start/stop test has been performed.
+- No Molido JNI wrapper integrated into the Android APK, app-owned central `VpnService`, authenticated Binder/ParcelFileDescriptor handoff, or real `VpnService.protect()` callback wiring exists yet. The app still depends on the AAR's `GoBackend.VpnService`.
+- Do not claim FD ownership is fully solved: the patch addresses audited UAPI listener partial-failure paths and prior Android entry-point lifecycle issues, but Java/Binder/Go ownership transfer and process-death cleanup remain unimplemented.
+- PR #4 remains Draft/open/unmerged. Stable Production remains BLOCKED.
