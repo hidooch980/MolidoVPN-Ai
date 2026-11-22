@@ -12,19 +12,32 @@ class AndroidNetworkObservationMonitor(
     private val nowEpochMillis: () -> Long = System::currentTimeMillis
 ) {
     private var registered = false
-    @Volatile private var observedDefaultNetwork: Network? = null
+    private var observedDefaultNetwork: Network? = null
     private val callback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) = publishIfDefault(network)
-        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
-            if (network == connectivityManager.activeNetwork) publish(network, capabilities)
+        override fun onAvailable(network: Network) {
+            synchronized(this@AndroidNetworkObservationMonitor) {
+                if (registered) publishIfDefault(network)
+            }
         }
+
+        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+            synchronized(this@AndroidNetworkObservationMonitor) {
+                if (registered && network == connectivityManager.activeNetwork) {
+                    publish(network, capabilities)
+                }
+            }
+        }
+
         override fun onLost(network: Network) {
-            // activeNetwork may already be null or point at a replacement by the
-            // time onLost is delivered; compare against the last observed default.
-            if (network == observedDefaultNetwork) {
-                val current = connectivityManager.activeNetwork
-                observedDefaultNetwork = current
-                publish(current)
+            synchronized(this@AndroidNetworkObservationMonitor) {
+                if (!registered) return
+                // activeNetwork may already be null or point at a replacement by the
+                // time onLost is delivered; compare against the last observed default.
+                if (network == observedDefaultNetwork) {
+                    val current = connectivityManager.activeNetwork
+                    observedDefaultNetwork = current
+                    publish(current)
+                }
             }
         }
     }
@@ -32,15 +45,27 @@ class AndroidNetworkObservationMonitor(
     @Synchronized fun start() {
         if (registered) return
         // This API observes only the system default network and is available at minSdk 26.
-        connectivityManager.registerDefaultNetworkCallback(callback, Handler(Looper.getMainLooper()))
         registered = true
-        publish(connectivityManager.activeNetwork)
+        try {
+            connectivityManager.registerDefaultNetworkCallback(callback, Handler(Looper.getMainLooper()))
+            publish(connectivityManager.activeNetwork)
+        } catch (failure: Exception) {
+            registered = false
+            observedDefaultNetwork = null
+            throw failure
+        }
     }
 
     @Synchronized fun stop() {
         if (!registered) return
-        connectivityManager.unregisterNetworkCallback(callback)
+        // Gate callbacks before unregistering so a queued callback cannot publish stale data.
         registered = false
+        try {
+            connectivityManager.unregisterNetworkCallback(callback)
+        } finally {
+            observedDefaultNetwork = null
+            onObservation(null)
+        }
     }
 
     private fun publishIfDefault(network: Network) {
