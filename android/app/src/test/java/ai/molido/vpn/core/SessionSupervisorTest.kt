@@ -158,4 +158,35 @@ class SessionSupervisorTest {
         assertEquals(SessionState.IDLE, supervisor.snapshot().state)
     }
 
+
+    @Test
+    fun isolatedEngineDeathCanEnterStoppingAndRetainsSessionUntilServiceClosesTun() {
+        val coordinator = TunOwnershipCoordinator()
+        val supervisor = SessionSupervisor(coordinator)
+
+        assertTrue(supervisor.claim(EngineSlot.V2RAY_XRAY))
+        val lease = supervisor.tunLeaseFor(EngineSlot.V2RAY_XRAY)!!
+        assertTrue(coordinator.markDescriptorTransferred(lease, 10421))
+        assertTrue(supervisor.markRunning(EngineSlot.V2RAY_XRAY))
+
+        // Binder/process death is not cleanup confirmation; coordinator enters
+        // CLEANUP_REQUIRED and keeps the exclusive lease.
+        assertTrue(coordinator.reportEngineProcessDeath(lease, 10421))
+        assertEquals(TunLeaseState.CLEANUP_REQUIRED, coordinator.snapshot().state)
+        assertFalse(supervisor.release(EngineSlot.V2RAY_XRAY))
+        assertFalse(supervisor.claim(EngineSlot.WIREGUARD))
+
+        // The facade must still be able to enter STOPPING after the death event.
+        assertTrue(supervisor.beginStopping(EngineSlot.V2RAY_XRAY))
+        assertEquals(SessionState.STOPPING, supervisor.snapshot().state)
+        assertFalse(supervisor.release(EngineSlot.V2RAY_XRAY))
+
+        // Only the central service's confirmed close permits both ledgers to release.
+        assertTrue(coordinator.confirmServiceTunClosed(lease))
+        assertTrue(supervisor.release(EngineSlot.V2RAY_XRAY))
+        assertEquals(SessionState.IDLE, supervisor.snapshot().state)
+        assertEquals(TunLeaseState.IDLE, coordinator.snapshot().state)
+        assertTrue(supervisor.claim(EngineSlot.WIREGUARD))
+    }
+
 }
