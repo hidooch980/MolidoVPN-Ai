@@ -70,14 +70,14 @@ Migration is NOT IMPLEMENTED. WireGuard remains the only registered adapter and 
 
 ## 8. Verified upstream WireGuard API and native FD feasibility (2026-11-22)
 
-Reviewed official `WireGuard/wireguard-android` tag `1.0.20260315`, peeled commit `0856e2ecf7f3cce0e9c9014db3ad7665669adce5`.
+Reviewed the exact official `WireGuard/wireguard-android` dependency tag `1.0.20260102`; signed annotated tag object `3831cab2da844319291459308a6e535d36dde4b3`, peeled commit `09b75c2bd37f749e2a8c85876394854113c74be7` (upstream tag signature verified by GitHub).
 
 The native integration blocker is narrower than “WireGuard cannot accept an external TUN FD”:
 
 - Upstream `libwg-go/api-android.go` exports `wgTurnOn(interfaceName, tunFd, settings)` and attaches the supplied descriptor with `tun.CreateUnmonitoredTUNFromFD`.
 - On attach failure the Go entry point closes the supplied FD. After successful attach, the Go TUN device owns that descriptor and `wgTurnOff(handle)` closes the device.
-- The Android `GoBackend` wrapper currently hides this capability: `GoBackend.java` (blob `1b91aeda2cc8b78fda441b70227bfa25eb02c7a8`) obtains its own `VpnService`, calls `Builder.establish()`, detaches that descriptor, invokes `wgTurnOn`, and protects the returned IPv4/IPv6 UDP socket descriptors. Its `wgTurnOn(String, int, String)` JNI declaration is private; the public `Backend` interface has no externally supplied TUN-FD parameter.
-- The JNI bridge is `tunnel/tools/libwg-go/jni.c` (blob `7ad94d350a9f1953ab4c5de8dcd374f9512612b9`). It forwards the supplied FD to the Go `wgTurnOn` symbol. Thus the Go entry point is reusable in a pinned source build, but the published AAR API does not expose it for Molido-owned TUN injection.
+- The Android `GoBackend` wrapper currently hides this capability: `GoBackend.java` (blob `196836d278c92ac86db49a131d6f27b27b445403`) obtains its own `VpnService`, calls `Builder.establish()`, detaches that descriptor, invokes `wgTurnOn`, and protects the returned IPv4/IPv6 UDP socket descriptors. Its `wgTurnOn(String, int, String)` JNI declaration is private; the public `Backend` interface has no externally supplied TUN-FD parameter.
+- The JNI bridge is `tunnel/tools/libwg-go/api-android.go` (blob `d47c5d76cfdef368ae1cdacf805c53acc553a023`) and `tunnel/tools/libwg-go/jni.c` (blob `7ad94d350a9f1953ab4c5de8dcd374f9512612b9`). It forwards the supplied FD to the Go `wgTurnOn` symbol. Thus the Go entry point is reusable in a pinned source build, but the published AAR API does not expose it for Molido-owned TUN injection.
 - Therefore the supported engineering route is a pinned source-built backend wrapper around the existing native entry point, not reflection or a guessed public AAR API. Keep the native ABI and package/JNI symbols aligned to the exact pinned source revision.
 
 ### Required wrapper contract
