@@ -136,8 +136,9 @@ class SessionSupervisor(
 
     /**
      * Roll back a startup that failed before returning a session handle. The exact
-     * lease must either still be RESERVED or have a confirmed service-close path after
-     * isolated-process death; an active or uncertain TUN is never silently released.
+     * lease must still be RESERVED (no FD was transferred) or the service must already
+     * have independently confirmed closure and released the coordinator lease. An active
+     * or uncertain TUN is never silently released by this supervisor.
      */
     @Synchronized
     fun releaseUnstartedReservation(
@@ -156,15 +157,10 @@ class SessionSupervisor(
                 snapshot.generation == lease.generation
             val released = if (alreadyCleanedByAdapter) {
                 true
-            } else if (
-                snapshot.state == TunLeaseState.CLEANUP_REQUIRED &&
-                lease.transport == TunLeaseTransport.DESCRIPTOR_HANDOFF
-            ) {
-                // Startup can fail after the isolated process received its FD but
-                // before the supervisor publishes RUNNING. Process death still
-                // requires the central service to close its retained descriptor.
-                coordinator.confirmServiceTunClosed(lease)
             } else {
+                // In CLEANUP_REQUIRED, only the central service can confirm that its
+                // original descriptor has actually been closed. This supervisor must
+                // never manufacture that acknowledgement during rollback.
                 if (!coordinator.isReserved(lease)) return false
                 when (lease.transport) {
                     TunLeaseTransport.BACKEND_MANAGED ->
