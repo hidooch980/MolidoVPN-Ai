@@ -144,7 +144,7 @@ func shutdownVPNService(s V2RayVPNServiceSupportsSet) error {
 def patch_support_test_source(source: str) -> str:
     return replace_once(
         source,
-        r'fmt.Fprintf(conn, fmt.Sprintf("GET / HTTP/1.1\r\nHost: %s\r\n\r\n", _host)',
+        r'fmt.Fprintf(conn, fmt.Sprintf("GET / HTTP/1.1\r\nHost: %s\r\n\r\n", _host))',
         r'fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: %s\r\n\r\n", _host)',
         "non-constant fmt.Fprintf test call",
     )
