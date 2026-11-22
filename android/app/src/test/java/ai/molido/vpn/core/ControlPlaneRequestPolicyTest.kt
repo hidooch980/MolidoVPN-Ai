@@ -28,7 +28,7 @@ class ControlPlaneRequestPolicyTest {
 
     @Test
     fun rejectsBlankOversizedAndHeaderInjectionTokens() {
-        listOf("", " ", "x".repeat(513), "token\\r\\nInjected: yes", "token\\ttab").forEach { token ->
+        listOf("", " ", "x".repeat(513), "token\r\nInjected: yes", "token\ttab").forEach { token ->
             assertThrows(IllegalArgumentException::class.java) {
                 ControlPlaneRequestPolicy.validateDeviceToken(token)
             }
