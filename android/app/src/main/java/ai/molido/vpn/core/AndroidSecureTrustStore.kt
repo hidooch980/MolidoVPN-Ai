@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import java.nio.ByteBuffer
 import java.security.KeyStore
 import java.security.KeyFactory
 import java.security.PublicKey
@@ -15,7 +16,9 @@ import javax.crypto.spec.GCMParameterSpec
 
 /**
  * Encrypts pinned public keys and monotonic version counters at rest with an
- * Android Keystore AES-GCM key. Initial key pinning must be provisioned out of band.
+ * Android Keystore AES-GCM key. Each value is authenticated against its storage
+ * purpose so ciphertext cannot be swapped between trust keys or rollback counters.
+ * Initial key pinning must be provisioned out of band.
  */
 class AndroidSecureTrustStore(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
@@ -27,10 +30,10 @@ class AndroidSecureTrustStore(context: Context) {
     fun pinUpdatePublicKey(encodedX509: ByteArray) = pinOnce(UPDATE_KEY, encodedX509)
 
     @Synchronized
-    fun loadControlPlanePublicKey(): PublicKey = decodePublicKey(readEncrypted(CONTROL_KEY))
+    fun loadControlPlanePublicKey(): PublicKey = decodeAndClear(CONTROL_KEY)
 
     @Synchronized
-    fun loadUpdatePublicKey(): PublicKey = decodePublicKey(readEncrypted(UPDATE_KEY))
+    fun loadUpdatePublicKey(): PublicKey = decodeAndClear(UPDATE_KEY)
 
     @Synchronized
     fun currentConfigurationRevision(): Long = readCounter(CONFIG_REVISION)
@@ -52,20 +55,47 @@ class AndroidSecureTrustStore(context: Context) {
         require(encoded.isNotEmpty() && encoded.size <= MAX_PUBLIC_KEY_BYTES)
         val existing = preferences.getString(name, null)
         if (existing != null) {
-            val prior = decrypt(Base64.decode(existing, Base64.NO_WRAP))
-            require(prior.contentEquals(encoded)) { "Pinned trust key replacement is forbidden" }
+            val ciphertext = Base64.decode(existing, Base64.NO_WRAP)
+            val prior = try {
+                decrypt(ciphertext, name)
+            } finally {
+                ciphertext.fill(0)
+            }
+            try {
+                require(prior.contentEquals(encoded)) { "Pinned trust key replacement is forbidden" }
+            } finally {
+                prior.fill(0)
+            }
             return
         }
-        val encrypted = encrypt(encoded)
-        check(preferences.edit().putString(name, Base64.encodeToString(encrypted, Base64.NO_WRAP)).commit()) {
-            "Unable to persist pinned trust key"
+        val encrypted = encrypt(encoded, name)
+        try {
+            check(preferences.edit().putString(name, Base64.encodeToString(encrypted, Base64.NO_WRAP)).commit()) {
+                "Unable to persist pinned trust key"
+            }
+        } finally {
+            encrypted.fill(0)
+        }
+    }
+
+    private fun decodeAndClear(name: String): PublicKey {
+        val encoded = readEncrypted(name)
+        return try {
+            decodePublicKey(encoded)
+        } finally {
+            encoded.fill(0)
         }
     }
 
     private fun readEncrypted(name: String): ByteArray {
         val stored = preferences.getString(name, null)
             ?: throw IllegalStateException("Required trust key is not provisioned")
-        return decrypt(Base64.decode(stored, Base64.NO_WRAP))
+        val ciphertext = Base64.decode(stored, Base64.NO_WRAP)
+        return try {
+            decrypt(ciphertext, name)
+        } finally {
+            ciphertext.fill(0)
+        }
     }
 
     private fun decodePublicKey(encoded: ByteArray): PublicKey =
@@ -73,41 +103,87 @@ class AndroidSecureTrustStore(context: Context) {
 
     private fun readCounter(name: String): Long {
         val stored = preferences.getString(name, null) ?: return 0L
-        val bytes = decrypt(Base64.decode(stored, Base64.NO_WRAP))
-        require(bytes.size == java.lang.Long.BYTES) { "Stored monotonic counter is malformed" }
-        return java.nio.ByteBuffer.wrap(bytes).long.also { require(it >= 0) }
+        val ciphertext = Base64.decode(stored, Base64.NO_WRAP)
+        val bytes = try {
+            decrypt(ciphertext, name)
+        } finally {
+            ciphertext.fill(0)
+        }
+        return try {
+            require(bytes.size == java.lang.Long.BYTES) { "Stored monotonic counter is malformed" }
+            java.nio.ByteBuffer.wrap(bytes).long.also { require(it >= 0) }
+        } finally {
+            bytes.fill(0)
+        }
     }
 
     private fun advanceCounter(name: String, value: Long) {
         require(value > 0)
         val current = readCounter(name)
         require(value > current) { "Rollback or duplicate revision rejected" }
-        val encrypted = encrypt(java.nio.ByteBuffer.allocate(java.lang.Long.BYTES).putLong(value).array())
-        check(preferences.edit().putString(name, Base64.encodeToString(encrypted, Base64.NO_WRAP)).commit()) {
-            "Unable to persist monotonic counter"
+        val plaintext = ByteBuffer.allocate(java.lang.Long.BYTES).putLong(value).array()
+        val encrypted = try {
+            encrypt(plaintext, name)
+        } finally {
+            plaintext.fill(0)
+        }
+        try {
+            check(preferences.edit().putString(name, Base64.encodeToString(encrypted, Base64.NO_WRAP)).commit()) {
+                "Unable to persist monotonic counter"
+            }
+        } finally {
+            encrypted.fill(0)
         }
     }
 
-    private fun encrypt(plain: ByteArray): ByteArray {
+    private fun encrypt(plain: ByteArray, purpose: String): ByteArray {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, encryptionKey())
-        val encrypted = cipher.doFinal(plain)
-        return cipher.iv + encrypted
+        val aad = associatedData(purpose)
+        val encrypted = try {
+            cipher.updateAAD(aad)
+            cipher.doFinal(plain)
+        } finally {
+            aad.fill(0)
+        }
+        return try {
+            cipher.iv + encrypted
+        } finally {
+            encrypted.fill(0)
+        }
     }
 
-    private fun decrypt(encoded: ByteArray): ByteArray {
-        require(encoded.size > GCM_IV_BYTES)
+    private fun decrypt(encoded: ByteArray, purpose: String): ByteArray {
+        require(encoded.size > GCM_IV_BYTES + GCM_TAG_BYTES) { "Stored trust data is malformed" }
         val iv = encoded.copyOfRange(0, GCM_IV_BYTES)
         val ciphertext = encoded.copyOfRange(GCM_IV_BYTES, encoded.size)
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.DECRYPT_MODE, encryptionKey(), GCMParameterSpec(GCM_TAG_BITS, iv))
-        return cipher.doFinal(ciphertext)
+        val aad = associatedData(purpose)
+        try {
+            val cipher = Cipher.getInstance(TRANSFORMATION)
+            cipher.init(
+                Cipher.DECRYPT_MODE,
+                encryptionKey(createIfMissing = false),
+                GCMParameterSpec(GCM_TAG_BITS, iv)
+            )
+            cipher.updateAAD(aad)
+            return cipher.doFinal(ciphertext)
+        } finally {
+            iv.fill(0)
+            ciphertext.fill(0)
+            aad.fill(0)
+        }
     }
 
-    private fun encryptionKey(): SecretKey {
+    private fun associatedData(purpose: String): ByteArray =
+        "$AAD_PREFIX:$purpose".toByteArray(Charsets.UTF_8)
+
+    private fun encryptionKey(createIfMissing: Boolean = true): SecretKey {
         val store = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
         val existing = store.getKey(ENCRYPTION_KEY_ALIAS, null) as? SecretKey
         if (existing != null) return existing
+        check(createIfMissing) {
+            "Android Keystore trust key is missing; refusing to replace it during decryption"
+        }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
         generator.init(
             KeyGenParameterSpec.Builder(
@@ -115,6 +191,7 @@ class AndroidSecureTrustStore(context: Context) {
                 KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
             ).setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
                 .setRandomizedEncryptionRequired(true)
                 .build()
         )
@@ -128,10 +205,12 @@ class AndroidSecureTrustStore(context: Context) {
         const val TRANSFORMATION = "AES/GCM/NoPadding"
         const val GCM_IV_BYTES = 12
         const val GCM_TAG_BITS = 128
+        const val GCM_TAG_BYTES = 16
         const val MAX_PUBLIC_KEY_BYTES = 4096
         const val CONTROL_KEY = "control_plane_public_key"
         const val UPDATE_KEY = "update_public_key"
         const val CONFIG_REVISION = "configuration_revision"
         const val INSTALLED_VERSION = "installed_version_code"
+        const val AAD_PREFIX = "molido-trust-store-v1"
     }
 }
