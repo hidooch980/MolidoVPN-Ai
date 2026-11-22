@@ -1,44 +1,87 @@
 package ai.molido.vpn.core
 
-/**
- * Process-local guard for bounded recovery orchestration.
- *
- * A token must be completed exactly once. Stale completions are rejected, one retry
- * may be in flight at a time, and only a confirmed successful reconnect resets the cap.
- */
 data class RecoveryAttemptToken internal constructor(
     val generation: Long,
     val attempt: Int
 )
 
-class RecoveryAttemptGate(private val maxAttempts: Int = ResilienceRecoveryCore.DEFAULT_MAX_ATTEMPTS) {
+data class PersistedRecoveryAttemptState(
+    val attemptsStarted: Int = 0,
+    val generation: Long = 0,
+    val inFlight: Boolean = false,
+    val interrupted: Boolean = false
+)
+
+/** Storage must atomically persist the complete state before returning true. */
+interface RecoveryAttemptStateStore {
+    fun read(): PersistedRecoveryAttemptState
+    fun write(state: PersistedRecoveryAttemptState): Boolean
+}
+
+class RecoveryAttemptGate(
+    private val maxAttempts: Int = ResilienceRecoveryCore.DEFAULT_MAX_ATTEMPTS,
+    private val store: RecoveryAttemptStateStore? = null
+) {
     private var generation = 0L
     private var started = 0
     private var inFlight: RecoveryAttemptToken? = null
+    private var interrupted = false
 
     init {
         require(maxAttempts > 0) { "Recovery attempt limit must be positive" }
+        val persisted = runCatching { store?.read() ?: PersistedRecoveryAttemptState() }
+            .getOrElse { PersistedRecoveryAttemptState(attemptsStarted = maxAttempts, interrupted = true) }
+        generation = persisted.generation.coerceAtLeast(0)
+        started = persisted.attemptsStarted.coerceIn(0, maxAttempts)
+        interrupted = persisted.interrupted
+        // A process died after durably reserving a retry. Do not replay it after restart:
+        // mark this recovery cycle exhausted until an explicit operator reset.
+        if (persisted.inFlight) {
+            started = maxAttempts
+            interrupted = true
+            runCatching {
+                store?.write(PersistedRecoveryAttemptState(started, generation, false, true))
+            }
+        }
+        if (interrupted) started = maxAttempts
     }
 
     @Synchronized
     fun tryStart(): RecoveryAttemptToken? {
-        if (inFlight != null || started >= maxAttempts) return null
-        generation += 1
-        started += 1
-        return RecoveryAttemptToken(generation, started).also { inFlight = it }
+        if (interrupted || inFlight != null || started >= maxAttempts) return null
+        val token = RecoveryAttemptToken(generation + 1, started + 1)
+        val next = PersistedRecoveryAttemptState(token.attempt, token.generation, true, false)
+        if (store != null && !runCatching { store.write(next) }.getOrDefault(false)) return null
+        generation = token.generation
+        started = token.attempt
+        inFlight = token
+        return token
     }
 
     @Synchronized
     fun complete(token: RecoveryAttemptToken, connected: Boolean): Boolean {
         if (inFlight != token) return false
+        val nextStarted = if (connected) 0 else started
+        val next = PersistedRecoveryAttemptState(nextStarted, generation, false, false)
+        if (store != null && !runCatching { store.write(next) }.getOrDefault(false)) return false
         inFlight = null
-        if (connected) started = 0
+        started = nextStarted
         return true
     }
 
+    /** Only an explicit user/operator action may clear a process-death recovery lockout. */
     @Synchronized
-    fun attemptsStarted(): Int = started
+    fun resetAfterExplicitUserAction(): Boolean {
+        val next = PersistedRecoveryAttemptState()
+        if (store != null && !runCatching { store.write(next) }.getOrDefault(false)) return false
+        generation = 0
+        started = 0
+        inFlight = null
+        interrupted = false
+        return true
+    }
 
-    @Synchronized
-    fun isInFlight(): Boolean = inFlight != null
+    @Synchronized fun attemptsStarted(): Int = started
+    @Synchronized fun isInFlight(): Boolean = inFlight != null
+    @Synchronized fun isInterrupted(): Boolean = interrupted
 }

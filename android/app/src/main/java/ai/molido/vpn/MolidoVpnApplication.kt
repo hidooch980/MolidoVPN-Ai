@@ -17,10 +17,12 @@ import ai.molido.vpn.core.NetworkIntelligenceCore
 import ai.molido.vpn.core.NetworkObservation
 import ai.molido.vpn.core.NetworkPolicy
 import ai.molido.vpn.core.NetworkPolicySettingsStore
+import ai.molido.vpn.core.RecoveryAttemptGate
 import ai.molido.vpn.core.SessionSupervisor
 import ai.molido.vpn.core.TunOwnershipCoordinator
 import ai.molido.vpn.core.VpnSessionController
 import ai.molido.vpn.engine.wireguard.WireGuardEngineAdapter
+import ai.molido.vpn.core.AndroidRecoveryAttemptStateStore
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -96,7 +98,10 @@ class MolidoVpnApplication : Application() {
             adapters = registeredAdapters,
             networkAssessmentProvider = { latestNetworkAssessment() },
             networkPolicyProvider = { selectedNetworkPolicy.get() },
-            diagnostics = diagnostics
+            diagnostics = diagnostics,
+            recoveryAttemptGate = RecoveryAttemptGate(store = AndroidRecoveryAttemptStateStore(
+                getSharedPreferences("molido_recovery_state", MODE_PRIVATE)
+            ))
         )
         val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         networkMonitor = AndroidNetworkObservationMonitor(

@@ -6,7 +6,8 @@ class VpnSessionController(
     private val networkAssessmentProvider: (() -> NetworkAssessment)? = null,
     private val networkPolicyProvider: () -> NetworkPolicy = { NetworkPolicy.ANY_VALIDATED },
     private val diagnostics: DiagnosticsObservabilityCore? = null,
-    private val nowEpochMillis: () -> Long = System::currentTimeMillis
+    private val nowEpochMillis: () -> Long = System::currentTimeMillis,
+    private val recoveryAttemptGate: RecoveryAttemptGate = RecoveryAttemptGate()
 ) {
     private val adaptersBySlot: Map<EngineSlot, EngineAdapter> =
         adapters.associateBy { it.slot }.also { mapped ->
@@ -275,8 +276,6 @@ class VpnSessionController(
         return true
     }
 
-
-    private val recoveryAttemptGate = RecoveryAttemptGate()
 
     /** Atomically reserves one bounded retry slot; concurrent callers cannot overlap. */
     @Synchronized

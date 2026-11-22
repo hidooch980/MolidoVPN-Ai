@@ -68,4 +68,46 @@ class RecoveryAttemptGateTest {
             pool.shutdownNow()
         }
     }
+
+    @Test
+    fun processDeathWithPendingAttemptFailsClosedAcrossGateRecreation() {
+        val store = InMemoryRecoveryStateStore()
+        val firstProcess = RecoveryAttemptGate(maxAttempts = 3, store = store)
+        assertNotNull(firstProcess.tryStart())
+        val afterProcessDeath = RecoveryAttemptGate(maxAttempts = 3, store = store)
+        assertTrue(afterProcessDeath.isInterrupted())
+        assertEquals(3, afterProcessDeath.attemptsStarted())
+        assertNull(afterProcessDeath.tryStart())
+    }
+
+    @Test
+    fun persistenceFailurePreventsStartingOrCompletingAnAttempt() {
+        val store = InMemoryRecoveryStateStore().apply { failWrites = true }
+        val gate = RecoveryAttemptGate(maxAttempts = 2, store = store)
+        assertNull(gate.tryStart())
+        assertFalse(gate.isInFlight())
+    }
+
+    @Test
+    fun explicitOperatorResetClearsProcessDeathLockout() {
+        val store = InMemoryRecoveryStateStore()
+        val first = RecoveryAttemptGate(maxAttempts = 2, store = store)
+        assertNotNull(first.tryStart())
+        val restarted = RecoveryAttemptGate(maxAttempts = 2, store = store)
+        assertTrue(restarted.isInterrupted())
+        assertTrue(restarted.resetAfterExplicitUserAction())
+        assertNotNull(restarted.tryStart())
+    }
+
+    private class InMemoryRecoveryStateStore : RecoveryAttemptStateStore {
+        var state = PersistedRecoveryAttemptState()
+        var failWrites = false
+        override fun read() = state
+        override fun write(state: PersistedRecoveryAttemptState): Boolean {
+            if (failWrites) return false
+            this.state = state
+            return true
+        }
+    }
+
 }
