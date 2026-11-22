@@ -51,6 +51,11 @@ class AndroidNetworkObservationMonitor(
             publish(connectivityManager.activeNetwork)
         } catch (failure: Exception) {
             registered = false
+            try {
+                connectivityManager.unregisterNetworkCallback(callback)
+            } catch (_: Exception) {
+                // Registration may have failed before Android retained the callback.
+            }
             observedDefaultNetwork = null
             throw failure
         }
@@ -75,14 +80,14 @@ class AndroidNetworkObservationMonitor(
     private fun publish(network: Network?, supplied: NetworkCapabilities? = null) {
         if (network == null) {
             observedDefaultNetwork = null
-            onObservation(null)
+            deliverNetworkObservationSafely(onObservation, null)
             return
         }
         if (network != connectivityManager.activeNetwork && supplied == null) return
         observedDefaultNetwork = network
         val caps = supplied ?: connectivityManager.getNetworkCapabilities(network)
         if (caps == null) {
-            onObservation(null)
+            deliverNetworkObservationSafely(onObservation, null)
             return
         }
         val transport = when {
