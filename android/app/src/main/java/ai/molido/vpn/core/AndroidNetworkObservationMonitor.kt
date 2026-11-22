@@ -64,7 +64,7 @@ class AndroidNetworkObservationMonitor(
             connectivityManager.unregisterNetworkCallback(callback)
         } finally {
             observedDefaultNetwork = null
-            onObservation(null)
+            deliverNetworkObservationSafely(onObservation, null)
         }
     }
 
@@ -92,7 +92,7 @@ class AndroidNetworkObservationMonitor(
             caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> NetworkTransport.VPN
             else -> NetworkTransport.OTHER
         }
-        onObservation(NetworkObservation(
+        deliverNetworkObservationSafely(onObservation, NetworkObservation(
             transport = transport,
             validation = if (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED))
                 NetworkValidation.VALIDATED else NetworkValidation.NOT_VALIDATED,
@@ -102,4 +102,18 @@ class AndroidNetworkObservationMonitor(
             upstreamKbps = caps.linkUpstreamBandwidthKbps.takeIf { it > 0 }
         ))
     }
+}
+
+/**
+ * Isolates platform/network lifecycle callbacks from consumer code. A UI observer
+ * exception must not leak a registered ConnectivityManager callback or crash its thread.
+ */
+internal fun deliverNetworkObservationSafely(
+    observer: (NetworkObservation?) -> Unit,
+    observation: NetworkObservation?
+): Boolean = try {
+    observer(observation)
+    true
+} catch (_: Exception) {
+    false
 }
