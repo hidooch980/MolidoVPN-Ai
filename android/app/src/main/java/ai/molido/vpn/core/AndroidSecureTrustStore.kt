@@ -52,7 +52,7 @@ class AndroidSecureTrustStore(context: Context) {
     }
 
     private fun pinOnce(name: String, encoded: ByteArray) = synchronized(PROCESS_LOCK) {
-        require(encoded.isNotEmpty() && encoded.size <= MAX_PUBLIC_KEY_BYTES)
+        validatePinnedPublicKey(encoded)
         val existing = preferences.getString(name, null)
         if (existing != null) {
             val ciphertext = Base64.decode(existing, Base64.NO_WRAP)
@@ -95,6 +95,30 @@ class AndroidSecureTrustStore(context: Context) {
             decrypt(ciphertext)
         } finally {
             ciphertext.fill(0)
+        }
+    }
+
+    private fun validatePinnedPublicKey(encoded: ByteArray) {
+        require(encoded.isNotEmpty() && encoded.size <= MAX_PUBLIC_KEY_BYTES) {
+            "Pinned public key size is invalid"
+        }
+        try {
+            val key = decodePublicKey(encoded)
+            require(key.algorithm.equals("EC", ignoreCase = true)) {
+                "Pinned trust key must use EC"
+            }
+            val canonical = key.encoded
+            try {
+                require(canonical.contentEquals(encoded)) {
+                    "Pinned public key encoding is not canonical"
+                }
+            } finally {
+                canonical.fill(0)
+            }
+        } catch (failure: IllegalArgumentException) {
+            throw failure
+        } catch (failure: Exception) {
+            throw IllegalArgumentException("Pinned public key is invalid", failure)
         }
     }
 
