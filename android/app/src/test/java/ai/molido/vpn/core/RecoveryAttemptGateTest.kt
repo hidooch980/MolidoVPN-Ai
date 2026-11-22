@@ -139,4 +139,22 @@ class RecoveryAttemptGateTest {
         assertTrue(recreated.complete(nextToken, connected = false))
     }
 
+
+    @Test
+    fun generationOverflowFailsClosedWithoutIssuingWrappedToken() {
+        val store = InMemoryRecoveryStateStore().apply {
+            state = PersistedRecoveryAttemptState(
+                attemptsStarted = 0,
+                generation = Long.MAX_VALUE,
+                inFlight = false,
+                interrupted = false
+            )
+        }
+        val gate = RecoveryAttemptGate(maxAttempts = 3, store = store)
+        assertNull(gate.tryStart())
+        assertTrue(gate.isInterrupted())
+        assertEquals(Long.MAX_VALUE, store.state.generation)
+        assertTrue(store.state.interrupted)
+    }
+
 }
