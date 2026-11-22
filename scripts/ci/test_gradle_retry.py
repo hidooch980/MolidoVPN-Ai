@@ -29,8 +29,8 @@ class GradleRetryClassificationTests(unittest.TestCase):
         )
 
     def test_repository_wide_missing_dependency_burst_is_transient(self):
-        output = "\\n".join(
-            f"Could not find com.example:artifact{i}:1.0.\\nSearched in the following locations"
+        output = "\n".join(
+            f"Could not find com.example:artifact{i}:1.0.\nSearched in the following locations"
             for i in range(6)
         )
         self.assertEqual(classify_failure(output), "TRANSIENT_NETWORK")
