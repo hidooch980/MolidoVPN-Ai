@@ -61,9 +61,9 @@ class PatchXrayWrapperTests(unittest.TestCase):
             MODULE.patch_main_source("// MOLIDO_PATCH: fail-closed lifecycle v1")
 
     def test_upstream_test_vet_issue_is_fixed_without_changing_wire_text(self):
-        sample = r'fmt.Fprintf(conn, fmt.Sprintf("GET / HTTP/1.1\\r\\nHost: %s\\r\\n\\r\\n", _host))'
+        sample = r'fmt.Fprintf(conn, fmt.Sprintf("GET / HTTP/1.1\r\nHost: %s\r\n\r\n", _host))'
         patched = MODULE.patch_support_test_source(sample)
-        self.assertIn(r'fmt.Fprintf(conn, "GET / HTTP/1.1\\r\\nHost: %s\\r\\n\\r\\n", _host)', patched)
+        self.assertIn(r'fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: %s\r\n\r\n", _host)', patched)
         self.assertNotIn("fmt.Sprintf", patched)
 
     def test_lifecycle_tests_cover_callback_failures(self):
