@@ -60,6 +60,17 @@ class PatchXrayWrapperTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "already applied"):
             MODULE.patch_main_source("// MOLIDO_PATCH: fail-closed lifecycle v1")
 
+    def test_upstream_test_vet_issue_is_fixed_without_changing_wire_text(self):
+        sample = r'fmt.Fprintf(conn, fmt.Sprintf("GET / HTTP/1.1\\r\\nHost: %s\\r\\n\\r\\n", _host))'
+        patched = MODULE.patch_support_test_source(sample)
+        self.assertIn(r'fmt.Fprintf(conn, "GET / HTTP/1.1\\r\\nHost: %s\\r\\n\\r\\n", _host)', patched)
+        self.assertNotIn("fmt.Sprintf", patched)
+
+    def test_lifecycle_tests_cover_callback_failures(self):
+        self.assertIn("TestMolidoPrepareFailureTriggersShutdown", MODULE.LIFECYCLE_TEST)
+        self.assertIn("TestMolidoSetupFailureTriggersShutdown", MODULE.LIFECYCLE_TEST)
+        self.assertIn("TestMolidoNilServiceFailsClosed", MODULE.LIFECYCLE_TEST)
+
     def test_patch_adds_fail_closed_callback_checks_and_cleanup(self):
         patched = MODULE.patch_main_source(UPSTREAM_SHAPE)
         self.assertIn("prepareVPNService(v.SupportSet)", patched)
