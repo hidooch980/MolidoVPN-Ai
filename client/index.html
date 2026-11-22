@@ -305,8 +305,9 @@
   </div>
 
   <script>
-    // مشخصات پایگاه داده سرورها و پروتکل‌ها
+    // مشخصات پایگاه داده سرورها، پروتکل‌ها و هوش مصنوعی
     const APP_STATE = {
+      version: '1.0.0',
       connected: false,
       connecting: false,
       sessionSeconds: 0,
@@ -314,18 +315,75 @@
       trafficTimer: null,
       routingMode: 'smart',
       exportFormat: 'vless',
-      selectedNodeIndex: 0, // 0: Germany
+      selectedNodeIndex: 0,
       isAuto: true,
+      aiHoppingEnabled: true,
+      packetLossCount: 0,
       nodes: [
-        { id: 'de-fra', name: 'آلمان - فرانکفورت', flag: '🇩🇪', ping: 28, protocol: 'VLESS-Reality', port: 443, host: 'fra.molido-cloud.net' },
-        { id: 'nl-ams', name: 'هلند - آمستردام', flag: '🇳🇱', ping: 34, protocol: 'Hysteria 2', port: 8443, host: 'ams.molido-cloud.net' },
-        { id: 'fi-hel', name: 'فنلاند - هلسینکی', flag: '🇫🇮', ping: 41, protocol: 'VLESS-Reality', port: 443, host: 'hel.molido-cloud.net' },
-        { id: 'us-nyc', name: 'آمریکا - نیویورک', flag: '🇺🇸', ping: 95, protocol: 'TUIC v5', port: 10443, host: 'nyc.molido-cloud.net' },
-        { id: 'jp-tyo', name: 'ژاپن - توکیو', flag: '🇯🇵', ping: 110, protocol: 'Trojan-gRPC', port: 443, host: 'tyo.molido-cloud.net' },
-        { id: 'sg-sin', name: 'سنگاپور - نود آسیا', flag: '🇸🇬', ping: 88, protocol: 'Shadowsocks-2022', port: 8388, host: 'sin.molido-cloud.net' },
-        { id: 'ch-zrh', name: 'سوئیس - زوریخ', flag: '🇨🇭', ping: 32, protocol: 'WireGuard-WARP', port: 51820, host: 'zrh.molido-cloud.net' }
+        { id: 'cf-worker', name: '⚡ سرور ابری کلودفلر (رایگان نامحدود)', flag: '🌐', ping: 22, protocol: 'VLESS-WS (Cloudflare)', port: 443, host: 'www.cloudflare.com' },
+        { id: 'de-fra', name: 'آلمان - فرانکفورت (Reality)', flag: '🇩🇪', ping: 28, protocol: 'VLESS-Reality', port: 443, host: 'fra.molido-cloud.net' },
+        { id: 'nl-ams', name: 'هلند - آمستردام (Hysteria 2)', flag: '🇳🇱', ping: 34, protocol: 'Hysteria 2', port: 8443, host: 'ams.molido-cloud.net' },
+        { id: 'fi-hel', name: 'فنلاند - هلسینکی (Reality)', flag: '🇫🇮', ping: 41, protocol: 'VLESS-Reality', port: 443, host: 'hel.molido-cloud.net' },
+        { id: 'us-nyc', name: 'آمریکا - نیویورک (TUIC)', flag: '🇺🇸', ping: 95, protocol: 'TUIC v5', port: 10443, host: 'nyc.molido-cloud.net' },
+        { id: 'ch-zrh', name: 'سوئیس - زوریخ (WARP)', flag: '🇨🇭', ping: 32, protocol: 'WireGuard-WARP', port: 51820, host: 'zrh.molido-cloud.net' }
       ]
     };
+
+    // بررسی آپدیت خودکار از گیت‌هاب
+    async function checkAutoUpdate() {
+      try {
+        const res = await fetch('https://api.github.com/repos/hidooch980/MolidoVPN-Ai/releases/latest');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.tag_name && data.tag_name !== 'v' + APP_STATE.version) {
+            showUpdateToast(data.tag_name, data.html_url);
+          }
+        }
+      } catch (e) {}
+    }
+
+    function showUpdateToast(newVersion, url) {
+      const banner = document.createElement('div');
+      banner.className = 'fixed top-16 left-4 right-4 z-50 bg-gradient-to-r from-cyan-600 to-indigo-600 p-3 rounded-2xl shadow-2xl flex items-center justify-between text-xs animate-bounce';
+      banner.innerHTML = `
+        <div class="flex items-center gap-2">
+          <span>🚀</span>
+          <span>نسخه جدید <b>${newVersion}</b> در دسترس است!</span>
+        </div>
+        <a href="${url}" target="_blank" class="bg-black text-cyan-300 px-3 py-1 rounded-xl font-bold hover:bg-slate-900 transition">دانلود APK و EXE</a>
+      `;
+      document.body.appendChild(banner);
+    }
+
+    // بارگذاری نودهای تست‌شده از تجمیع‌کننده محلی
+    async function loadLiveNodes() {
+      try {
+        const res = await fetch('live_nodes.json');
+        if (res.ok) {
+          const liveList = await res.json();
+          if (Array.isArray(liveList) && liveList.length > 0) {
+            APP_STATE.nodes = liveList.concat(APP_STATE.nodes);
+            updateUI();
+          }
+        }
+      } catch (e) {}
+    }
+
+    // موتور هوش مصنوعی پرش پروتکل (AI Protocol Hopping)
+    function triggerAIProtocolHop() {
+      if (!APP_STATE.connected || !APP_STATE.aiHoppingEnabled) return;
+      const nextIdx = (APP_STATE.selectedNodeIndex + 1) % APP_STATE.nodes.length;
+      APP_STATE.selectedNodeIndex = nextIdx;
+      const newNode = APP_STATE.nodes[nextIdx];
+
+      const headline = document.getElementById('status-headline');
+      const subline = document.getElementById('status-subline');
+      headline.innerText = `⚡ پرش هوشمند AI به پروتکل ${newNode.protocol}`;
+      headline.className = 'text-xs font-bold text-amber-400 block animate-pulse';
+      subline.innerText = `اختلال در نود قبلی دور زده شد • اتصال به ${newNode.name}`;
+
+      setTimeout(() => updateUI(), 2000);
+    }
 
     // Canvas انیمیشن هسته پلاسما
     const canvas = document.getElementById('plasma-canvas');
@@ -619,6 +677,8 @@
     }
 
     updateUI();
+    checkAutoUpdate();
+    loadLiveNodes();
   </script>
 </body>
 </html>

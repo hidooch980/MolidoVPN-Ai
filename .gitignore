@@ -27,3 +27,5 @@ local.properties
 *.iml
 .DS_Store
 Thumbs.db
+windows/bin/
+client/live_nodes.json
