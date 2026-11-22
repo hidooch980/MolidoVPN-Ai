@@ -96,3 +96,15 @@ No VPN server/VPS is assumed or requested as a current development dependency. R
 ## Current PR state
 
 PR #4 remains **Draft / open / unmerged**. Keep it Draft until the central TUN migration, engine/legal gates, physical-device acceptance, signed artifact verification and all release checks pass.
+
+
+## Latest verified CI update — 2026-11-22 (supersedes older run summary above)
+
+- Current PR head at verification: `18b85d3a99f02d79bfbace6f04b06d52be9e4273`.
+- [Android CI run 45017363826](https://github.com/hidooch980/MolidoVPN-Ai/actions/runs/45017363826), run #411: **success**.
+- Passed jobs: Android Keystore instrumentation on CI emulator; patched Xray ARM64 AAR build validation; self-hosted control-plane tests; pinned WireGuard Go-only source build; Android source validation (unit tests, lint, release-variant assembly validation, and one-VPN-service manifest guard).
+- The Xray job explicitly passed wrapper patch-transformer tests, the Molido-scoped wrapper lifecycle Go tests, ARM64 AAR build, ELF inspection, and dependency license report generation. It does not represent full upstream integration/network tests.
+- Artifact ID `14752028831`; ZIP SHA-256 `6ad24b7e404888c1500204bbb729a7b1b7eae799b4e1660642ab4932236d2966`; AAR SHA-256 `b5ddb1314247b5020c3205a2f634871fbe7cf4571bfbf5fcc59d5caa34fb14cb`; extracted ARM64 ELF SHA-256 `e8dec785c9fb2055637d316f395748df5a5ddc115690702a3c89ade749edf028`.
+- License inventory: 62 dependency rows, including 2 GPL-3.0, 2 LGPL-3.0, and 2 MPL-2.0 entries. This requires a documented distribution/legal review; no license clearance is claimed. See `architecture/mahsa-xray-core-evaluation.md`, Finding E.
+- Release decision remains **BLOCKED**. PR #4 remains Draft/open/unmerged. Xray remains **NOT_IMPLEMENTED / NOT_SELECTABLE**; no physical-device test or real DNS/IP/TCP/UDP/network-handover test has been evidenced.
+- The CI artifact expires 2026-11-29. Preserve it only under the project's approved artifact policy; its existence does not authorize release or integration.
