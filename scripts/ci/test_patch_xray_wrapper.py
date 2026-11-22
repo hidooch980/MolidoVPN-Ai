@@ -8,6 +8,48 @@ MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC and SPEC.loader
 SPEC.loader.exec_module(MODULE)
 
+UPSTREAM_SHAPE = """package libv2ray
+func resolverFailure(v *V2RayPoint) {
+\t\t\t\t\tv.StopLoop()
+\t\t\t\t\tv.SupportSet.Shutdown()
+}
+func run(v *V2RayPoint) {
+\t\terr = v.pointloop()
+\t}
+\treturn
+}
+func (v *V2RayPoint) StopLoop() (err error) {
+\tv.v2rayOP.Lock()
+\tdefer v.v2rayOP.Unlock()
+\tif v.IsRunning {
+\t\tclose(v.closeChan)
+\t\tv.shutdownInit()
+\t\tv.SupportSet.OnEmitStatus(0, "Closed")
+\t}
+\treturn
+}
+func (v *V2RayPoint) shutdownInit() {
+\tv.IsRunning = false
+\tv.Vpoint.Close()
+\tv.Vpoint = nil
+\tv.statsManager = nil
+}
+func (v *V2RayPoint) pointloop() error {
+\tlog.Println("start core")
+\tv.IsRunning = true
+\tif err := v.Vpoint.Start(); err != nil {
+\t\tv.IsRunning = false
+\t\tlog.Println(err)
+\t\treturn err
+\t}
+
+\tv.SupportSet.Prepare()
+\tv.SupportSet.Setup("")
+\tv.SupportSet.OnEmitStatus(0, "Running")
+\treturn nil
+}
+"""
+
 
 class PatchXrayWrapperTests(unittest.TestCase):
     def test_patch_requires_exact_pinned_source_shape(self):
@@ -19,15 +61,14 @@ class PatchXrayWrapperTests(unittest.TestCase):
             MODULE.patch_main_source("// MOLIDO_PATCH: fail-closed lifecycle v1")
 
     def test_patch_adds_fail_closed_callback_checks_and_cleanup(self):
-        source = Path(__file__).parents[2] / "tests" / "fixtures" / "androidlibxray-main-sample.go"
-        if not source.exists():
-            self.skipTest("Pinned upstream source fixture is not checked into this repository")
-        patched = MODULE.patch_main_source(source.read_text(encoding="utf-8"))
+        patched = MODULE.patch_main_source(UPSTREAM_SHAPE)
         self.assertIn("prepareVPNService(v.SupportSet)", patched)
         self.assertIn("errors.Join(coreErr, serviceErr)", patched)
-        self.assertIn("v.SupportSet.Prepare()", patched)
-        self.assertIn("v.SupportSet.Setup(\"\")", patched)
+        self.assertIn("code := s.Prepare()", patched)
+        self.assertIn('code := s.Setup("")', patched)
         self.assertIn("shutdownVPNService(s)", patched)
+        self.assertIn("v.Vpoint != nil", patched)
+        self.assertIn("v.closeChan = nil", patched)
 
 
 if __name__ == "__main__":
