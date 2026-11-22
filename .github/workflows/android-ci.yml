@@ -144,6 +144,8 @@ jobs:
           go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20260217195705-b56b3793a9c4
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
           "$(go env GOPATH)/bin/gomobile" init
+      - name: Test Xray patch transformer
+        run: python3 scripts/ci/test_patch_xray_wrapper.py -v
       - name: Apply Molido fail-closed wrapper lifecycle patch
         working-directory: third_party/AndroidLibXrayLite
         run: python3 ../../scripts/ci/patch_xray_wrapper.py --source-dir .
