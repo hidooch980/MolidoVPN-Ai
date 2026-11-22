@@ -34,45 +34,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Run unit tests (retry transient repository failures)
-        shell: bash
-        run: |
-          for attempt in 1 2 3; do
-            if gradle --no-daemon :android:app:testDebugUnitTest; then
-              exit 0
-            fi
-            if [ "$attempt" -lt 3 ]; then
-              echo "Gradle dependency/test attempt $attempt failed; retrying after 15 seconds."
-              sleep 15
-            fi
-          done
-          exit 1
-      - name: Run Android lint (retry transient repository failures)
-        shell: bash
-        run: |
-          for attempt in 1 2 3; do
-            if gradle --no-daemon :android:app:lintDebug; then
-              exit 0
-            fi
-            if [ "$attempt" -lt 3 ]; then
-              echo "Gradle lint attempt $attempt failed; retrying after 15 seconds."
-              sleep 15
-            fi
-          done
-          exit 1
+      - name: Test Gradle retry classification
+        run: python3 scripts/ci/test_gradle_retry.py -v
+      - name: Run unit tests (retry transient repository failures only)
+        run: python3 scripts/ci/gradle_retry.py -- gradle --no-daemon :android:app:testDebugUnitTest
+      - name: Run Android lint (retry transient repository failures only)
+        run: python3 scripts/ci/gradle_retry.py -- gradle --no-daemon :android:app:lintDebug
       - name: Assemble release variant (CI validation only; never distributed)
-        shell: bash
-        run: |
-          for attempt in 1 2 3; do
-            if gradle --no-daemon :android:app:assembleRelease; then
-              exit 0
-            fi
-            if [ "$attempt" -lt 3 ]; then
-              echo "Gradle release-assembly attempt $attempt failed; retrying after 15 seconds."
-              sleep 15
-            fi
-          done
-          exit 1
+        run: python3 scripts/ci/gradle_retry.py -- gradle --no-daemon :android:app:assembleRelease
 
 
   backend:
