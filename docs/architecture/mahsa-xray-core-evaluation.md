@@ -126,6 +126,30 @@ Do not copy the implementation blindly: parsing should reject malformed ports, d
 5. **MASQUE experiment:** behind a disabled development test profile and a controlled, authorized endpoint only after provider/API/terms gate passes. Verify both H3 and H2, IPv4/IPv6, DNS, UDP, MTU/fragmentation, keepalive, reconnect, and fail-closed behavior. Never expose it in production UI before acceptance.
 6. **Regression/security/device tests:** malformed configuration, key redaction, socket protection, DNS and IPv6 leaks, network handover, process death, FD leaks, repeated start/stop, and sustained bidirectional traffic on a physical Android phone.
 
+## Finding C — Actual Molido TUN owner and integration blocker
+
+Reviewed Molido source at PR head `f0a3b50112fd3339870152436ee88c0452e3abd4`:
+- `MolidoVpnApplication.kt` currently registers only `WireGuardEngineAdapter`.
+- The manifest comment and app Gradle dependency confirm that upstream `GoBackend.VpnService` remains the sole VPN service/TUN provider.
+- `NativeEngineProcessService.kt` is a Messenger status endpoint only. It explicitly reports `NOT_IMPLEMENTED`, does not accept a TUN descriptor, and does not start Xray.
+- `TunOwnershipCoordinator` is a lease/state arbiter, not a TUN creator or descriptor-transfer implementation.
+- There is no app-owned central `VpnService` that can establish one TUN and transfer its descriptor to Xray. The current WireGuard backend owns its own service lifecycle and does not expose a safe handoff API to the Xray process.
+
+**Blocking architecture decision:** do not add an Xray adapter that pretends the coordinator itself provides a TUN. To support Xray's direct TUN path, first migrate TUN creation to a Molido-owned central `VpnService`, then adapt WireGuard and Xray to consume the same central TUN contract. That is a cross-engine lifecycle migration and must retain a safe rollback path to the currently tested WireGuard backend. Until that migration is implemented and tested, an Xray Binder endpoint receiving a `ParcelFileDescriptor` would have no legitimate producer and must not be wired into the runtime.
+
+## Finding D — ARM64 artifact evidence (CI build only)
+
+Workflow run: `45014769318`, commit `f0a3b50112fd3339870152436ee88c0452e3abd4`.
+- Artifact: `xray-android-arm64-build-53b13aedbd7826f6f2ac848784fa897e6f90b42a`.
+- AAR: `libv2ray.aar`, 18,463,954 bytes.
+- AAR SHA-256: `8c0a49ed17f0770b8f492dda268b30da9c923044dac2db9dccd8e1fc154cdf6b`.
+- Artifact ZIP SHA-256: `99a561e5eaf2b9497c73ed68b2b3313096062ca7b3b902d8e865ea3108af3323`.
+- ZIP contents include only `jni/arm64-v8a/libgojni.so`; extracted ELF is 64-bit AArch64, Android API 26, built with NDK r28c (28.2.13676358).
+- AAR contains generated Java bindings and embedded GeoIP/GeoSite assets. It is an unintegrated CI artifact, not an APK or release.
+- Go build metadata confirms the embedded Xray fork `v1.26.10-mahsa-r2` and actual compiled Go modules. The full module graph contains many transitive modules; a complete license/SBOM review remains a release blocker. The AAR is not yet approved for redistribution.
+
+The AAR artifact expires from GitHub Actions retention after 2026-11-29 unless downloaded and preserved under the project's approved artifact policy.
+
 ## Required Xray acceptance matrix (must all pass before registration)
 
 | Gate | Required evidence | Failure behavior |
