@@ -38,6 +38,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var policyView: TextView
     private lateinit var profileImportButton: Button
     private lateinit var wireGuardStateView: TextView
+    private lateinit var plasmaCoreView: PlasmaCoreView
     private var controlsBusy = false
     private val policyButtons = mutableMapOf<NetworkPolicy, Button>()
     private var profileText: String? = null
@@ -134,6 +135,16 @@ class MainActivity : ComponentActivity() {
         hero.addView(label("وضعیت اتصال", 14f, MUTED, true))
         statusView = label("در حال بررسی وضعیت…", 19f, WHITE, true).apply { setPadding(0, dp(8), 0, dp(8)) }
         hero.addView(statusView)
+        
+        plasmaCoreView = PlasmaCoreView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(160), dp(160)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                topMargin = dp(8)
+                bottomMargin = dp(12)
+            }
+        }
+        hero.addView(plasmaCoreView)
+
         val actionRow = row()
         connectButton = glassButton("اتصال امن  ⏻", true).apply {
             isEnabled = false
@@ -475,6 +486,9 @@ class MainActivity : ComponentActivity() {
             NetworkPolicy.WIFI_ONLY -> "فقط Wi‑Fi"
         }
         refreshPolicyButtonStyles(activePolicy)
+        if (::plasmaCoreView.isInitialized) {
+            plasmaCoreView.setSessionState(snapshot.state)
+        }
         message?.let { statusView.text = it }
     }
 

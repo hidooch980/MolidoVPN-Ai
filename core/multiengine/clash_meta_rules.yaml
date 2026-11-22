@@ -1,0 +1,83 @@
+# Molido VPN - Clash Meta / Mihomo Configuration
+port: 7890
+socks-port: 7891
+mixed-port: 7892
+allow-lan: false
+mode: rule
+log-level: info
+ipv6: false
+external-controller: 127.0.0.1:9090
+
+dns:
+  enable: true
+  listen: 0.0.0.0:1053
+  ipv6: false
+  default-nameserver:
+    - 223.5.5.5
+    - 1.1.1.1
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  nameserver:
+    - https://dns.google/dns-query
+    - https://1.1.1.1/dns-query
+
+proxies:
+  - name: "🇩🇪 آلمان - Reality"
+    type: vless
+    server: fra.molido-cloud.net
+    port: 443
+    uuid: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+    cipher: auto
+    tls: true
+    reality-opts:
+      public-key: 1y2z3a4b5c6d7e8f9g0h1i2j3k4l5m6n7o8p9q0r1s2t
+    servername: yahoo.com
+    network: tcp
+    client-fingerprint: chrome
+
+  - name: "🇳🇱 هلند - Hysteria 2"
+    type: hysteria2
+    server: ams.molido-cloud.net
+    port: 8443
+    password: molido-secure-token
+    sni: microsoft.com
+    skip-cert-verify: true
+
+  - name: "🇫🇮 فنلاند - Reality"
+    type: vless
+    server: hel.molido-cloud.net
+    port: 443
+    uuid: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+    cipher: auto
+    tls: true
+    reality-opts:
+      public-key: 1y2z3a4b5c6d7e8f9g0h1i2j3k4l5m6n7o8p9q0r1s2t
+    servername: speedtest.net
+    network: tcp
+    client-fingerprint: chrome
+
+proxy-groups:
+  - name: "⚡ سریع‌ترین خودکار (Auto)"
+    type: url-test
+    url: http://www.gstatic.com/generate_204
+    interval: 180
+    tolerance: 50
+    proxies:
+      - "🇩🇪 آلمان - Reality"
+      - "🇳🇱 هلند - Hysteria 2"
+      - "🇫🇮 فنلاند - Reality"
+
+  - name: "🛡️ Molido VPN"
+    type: select
+    proxies:
+      - "⚡ سریع‌ترین خودکار (Auto)"
+      - "🇩🇪 آلمان - Reality"
+      - "🇳🇱 هلند - Hysteria 2"
+      - "🇫🇮 فنلاند - Reality"
+      - DIRECT
+
+rules:
+  - DOMAIN-SUFFIX,ir,DIRECT
+  - GEOIP,ir,DIRECT
+  - GEOSITE,category-ads-all,REJECT
+  - MATCH,🛡️ Molido VPN

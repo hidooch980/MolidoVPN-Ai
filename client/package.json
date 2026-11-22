@@ -1,0 +1,13 @@
+{
+  "name": "molido-vpn-desktop",
+  "version": "1.0.0",
+  "description": "Molido VPN Plasma Client for Windows, Android and iOS",
+  "main": "electron-main.js",
+  "scripts": {
+    "start": "npx electron electron-main.js",
+    "build:win": "npx electron-builder --win"
+  },
+  "keywords": ["vpn", "plasma", "sing-box", "wireguard", "vless", "hysteria2", "cross-platform"],
+  "author": "Molido Team",
+  "license": "MIT"
+}

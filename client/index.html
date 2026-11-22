@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Molido VPN • کلاینت پلاسما هولوگرافیک</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#06b6d4">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Molido VPN">
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.15); opacity: 0.2; }
+      100% { transform: scale(1.3); opacity: 0; }
+    }
+    @keyframes spin-slow {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    @keyframes float-subtle {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-5px); }
+    }
+    .plasma-glow {
+      filter: drop-shadow(0 0 25px rgba(6, 182, 212, 0.45));
+    }
+    .glass-card {
+      background: rgba(15, 23, 42, 0.65);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .glass-input {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .hide-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .hide-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="bg-[#050811] text-slate-100 min-h-screen flex flex-col font-sans select-none selection:bg-cyan-500/30">
+
+  <!-- هدر اپلیکیشن -->
+  <header class="sticky top-0 z-40 bg-[#070b16]/80 backdrop-blur-md border-b border-white/5 px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-2.5">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+        <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+        </svg>
+      </div>
+      <div>
+        <div class="flex items-center gap-1.5">
+          <h1 class="text-sm font-bold text-white tracking-tight">Molido VPN</h1>
+          <span class="text-[9px] bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 px-1.5 py-0.2 rounded font-mono">PLASMA AI</span>
+        </div>
+        <p class="text-[10px] text-slate-400">کلاینت رایگان، چندسکویی و هوشمند</p>
+      </div>
+    </div>
+
+    <!-- سوئیچ پلتفرم و حالت‌های خروجی -->
+    <div class="flex items-center gap-1.5">
+      <button onclick="openExportModal()" class="px-2.5 py-1 rounded-xl text-xs font-medium bg-white/5 hover:bg-white/10 text-cyan-300 border border-white/10 flex items-center gap-1.5 transition">
+        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+        <span>اشتراک / لینک</span>
+      </button>
+      <button onclick="openPlatformModal()" class="px-2.5 py-1 rounded-xl text-xs font-medium bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 flex items-center gap-1 transition">
+        <span>دانلود کلاینت</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- محتوای اصلی کلاینت پلاسما -->
+  <main class="flex-1 max-w-md w-full mx-auto p-4 flex flex-col justify-between space-y-4">
+
+    <!-- کارت وضعیت و نود انتخابی -->
+    <div class="glass-card rounded-2xl p-3.5 flex items-center justify-between shadow-xl">
+      <div class="flex items-center gap-3">
+        <div id="country-flag-icon" class="text-2xl p-1 bg-white/5 rounded-xl border border-white/5">🇩🇪</div>
+        <div>
+          <div class="flex items-center gap-1.5">
+            <span id="country-name-label" class="text-xs font-bold text-white">آلمان - فرانکفورت</span>
+            <span id="auto-badge" class="text-[9px] bg-emerald-500/20 text-emerald-400 px-1 rounded font-mono">AUTO</span>
+          </div>
+          <span id="protocol-display-badge" class="text-[10px] text-slate-400 font-mono">VLESS-Reality • UDP Brutal</span>
+        </div>
+      </div>
+      <button onclick="openNodeSelector()" class="px-2.5 py-1.5 rounded-xl text-xs bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 flex items-center gap-1 transition">
+        <span id="ping-badge" class="text-emerald-400 font-mono font-bold">28 ms</span>
+        <svg class="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </button>
+    </div>
+
+    <!-- هسته پلاسما انیمیشنی ۶۰ فریم تعاملی -->
+    <div class="relative py-4 flex flex-col items-center justify-center">
+      
+      <!-- Canvas انیمیشن ذرات و اشعه‌های هولوگرافیک -->
+      <canvas id="plasma-canvas" width="300" height="300" class="pointer-events-none absolute inset-0 m-auto z-0"></canvas>
+
+      <!-- دکمه دایره‌ای تعاملی مرکزی -->
+      <div class="relative z-10 cursor-pointer" onclick="handleConnectToggle()">
+        <!-- هاله بیرونی با بلور عمیق -->
+        <div id="plasma-outer-glow" class="absolute -inset-6 rounded-full bg-cyan-500/20 blur-2xl transition-all duration-700"></div>
+
+        <!-- حلقه بیرونی نورانی -->
+        <div class="w-44 h-44 rounded-full bg-gradient-to-tr from-cyan-600 via-indigo-600 to-fuchsia-600 p-1 shadow-2xl flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
+          <div class="w-full h-full rounded-full bg-[#070b16]/85 backdrop-blur-md flex flex-col items-center justify-center text-center p-4">
+            
+            <!-- آیکون وضعیت -->
+            <svg id="power-icon" class="w-14 h-14 text-cyan-400 transition-colors duration-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+
+            <!-- برچسب دکمه -->
+            <span id="connect-btn-label" class="text-xs font-mono tracking-widest uppercase mt-2 text-cyan-300 font-bold">CONNECT</span>
+            <span id="session-time" class="text-[9px] font-mono text-slate-400 mt-0.5">00:00:00</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- وضعیت متنی و پیام هندشیک -->
+      <div class="mt-4 text-center z-10">
+        <span id="status-headline" class="text-xs font-bold text-slate-300 block">آماده برای برقراری ارتباط ایمن</span>
+        <span id="status-subline" class="text-[10px] text-slate-500 block mt-0.5">رمزگذاری ترافیک سرتاسری بدون ثبت لاگ</span>
+      </div>
+
+    </div>
+
+    <!-- مانیتورینگ بلادرنگ سرعت و ترافیک شبکه -->
+    <div class="grid grid-cols-2 gap-2.5">
+      <div class="glass-card p-3 rounded-2xl">
+        <div class="flex items-center justify-between text-slate-400 text-[10px] font-mono mb-1">
+          <span class="flex items-center gap-1 text-cyan-400">
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
+            DOWNLOAD
+          </span>
+          <span class="text-slate-500">PEAK</span>
+        </div>
+        <div class="flex items-baseline gap-1">
+          <span id="dl-meter" class="text-lg font-bold font-mono text-white">0.0</span>
+          <span class="text-[9px] text-slate-400 font-mono">MB/s</span>
+        </div>
+      </div>
+
+      <div class="glass-card p-3 rounded-2xl">
+        <div class="flex items-center justify-between text-slate-400 text-[10px] font-mono mb-1">
+          <span class="flex items-center gap-1 text-indigo-400">
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>
+            UPLOAD
+          </span>
+          <span class="text-slate-500">AVG</span>
+        </div>
+        <div class="flex items-baseline gap-1">
+          <span id="ul-meter" class="text-lg font-bold font-mono text-white">0.0</span>
+          <span class="text-[9px] text-slate-400 font-mono">MB/s</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- حالت‌های مسیریابی هوشمند (Smart / Global / Direct) -->
+    <div class="glass-card rounded-2xl p-2.5">
+      <span class="text-[10px] text-slate-400 uppercase tracking-widest block font-mono px-1 mb-1.5">ROUTING MODE</span>
+      <div class="grid grid-cols-3 gap-1 bg-black/40 p-1 rounded-xl">
+        <button onclick="setRoutingMode('smart')" id="route-smart-btn" class="py-1.5 px-2 rounded-lg text-xs font-bold transition text-center bg-cyan-500 text-black shadow">
+          هوشمند (دور زدن IR)
+        </button>
+        <button onclick="setRoutingMode('global')" id="route-global-btn" class="py-1.5 px-2 rounded-lg text-xs font-medium transition text-center text-slate-400 hover:text-white">
+          سراسری (Global)
+        </button>
+        <button onclick="setRoutingMode('direct')" id="route-direct-btn" class="py-1.5 px-2 rounded-lg text-xs font-medium transition text-center text-slate-400 hover:text-white">
+          مستقیم (Direct)
+        </button>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- مودال انتخاب سرور و کشورها با پینگ زنده -->
+  <div id="modal-nodes" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-[#0b101d] border border-white/10 w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+      <div class="flex items-center justify-between pb-2 border-b border-white/5">
+        <div>
+          <h3 class="text-sm font-bold text-white">انتخاب هوشمند سرور</h3>
+          <p class="text-[10px] text-slate-400">تست بلادرنگ پینگ و پایدارترین نودها</p>
+        </div>
+        <button onclick="closeModals()" class="text-slate-400 hover:text-white p-1">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <!-- گزینه انتخاب خودکار هوشمند -->
+      <div onclick="selectNode(-1)" class="p-3 rounded-2xl bg-gradient-to-r from-cyan-950/60 to-indigo-950/60 border border-cyan-500/30 flex items-center justify-between cursor-pointer hover:border-cyan-400 transition">
+        <div class="flex items-center gap-3">
+          <span class="text-2xl">⚡</span>
+          <div>
+            <span class="text-xs font-bold text-white block">انتخاب خودکار هوشمند (URL-Test)</span>
+            <span class="text-[10px] text-cyan-300">اتصال به سریع‌ترین سرور در هر لحظه</span>
+          </div>
+        </div>
+        <span class="text-[10px] bg-cyan-500/20 text-cyan-300 font-mono px-2 py-0.5 rounded-full font-bold">SMART</span>
+      </div>
+
+      <!-- لیست کشورها -->
+      <div class="flex-1 overflow-y-auto space-y-2 pr-1 hide-scrollbar" id="node-list-container">
+        <!-- داینامیک توسط جاوااسکریپت پر می‌شود -->
+      </div>
+    </div>
+  </div>
+
+  <!-- مودال خروجی اشتراک و کد QR برای آیفون/اندروید/ویندوز -->
+  <div id="modal-export" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-[#0b101d] border border-white/10 w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
+      <div class="flex items-center justify-between pb-2 border-b border-white/5">
+        <div>
+          <h3 class="text-sm font-bold text-white">دریافت کانفیگ و اشتراک رایگان</h3>
+          <p class="text-[10px] text-slate-400">سازگار با iOS (Shadowrocket, Sing-box)، اندروید و ویندوز</p>
+        </div>
+        <button onclick="closeModals()" class="text-slate-400 hover:text-white p-1">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <!-- انتخاب فرمت -->
+      <div class="flex items-center gap-2">
+        <button onclick="setExportFormat('vless')" id="fmt-vless-btn" class="px-2.5 py-1 rounded-xl text-xs font-bold bg-cyan-500 text-black">VLESS Reality</button>
+        <button onclick="setExportFormat('hysteria2')" id="fmt-hy2-btn" class="px-2.5 py-1 rounded-xl text-xs font-medium text-slate-400 hover:text-white bg-white/5">Hysteria 2</button>
+        <button onclick="setExportFormat('singbox')" id="fmt-singbox-btn" class="px-2.5 py-1 rounded-xl text-xs font-medium text-slate-400 hover:text-white bg-white/5">Sing-box JSON</button>
+        <button onclick="setExportFormat('clash')" id="fmt-clash-btn" class="px-2.5 py-1 rounded-xl text-xs font-medium text-slate-400 hover:text-white bg-white/5">Clash Meta</button>
+      </div>
+
+      <!-- متن کانفیگ -->
+      <div class="relative">
+        <textarea id="config-output-area" readonly class="w-full h-32 bg-black/60 border border-white/10 rounded-2xl p-3 text-[11px] font-mono text-cyan-300 resize-none outline-none leading-relaxed text-left dir-ltr"></textarea>
+      </div>
+
+      <!-- دکمه‌های اقدام -->
+      <div class="grid grid-cols-2 gap-2">
+        <button onclick="copyCurrentConfig()" class="w-full py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-cyan-500 to-blue-600 text-white flex items-center justify-center gap-1.5 shadow-lg shadow-cyan-500/20">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+          <span>کپی در کلیپ‌بورد</span>
+        </button>
+        <button onclick="downloadConfigFile()" class="w-full py-2.5 rounded-xl text-xs font-medium bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 flex items-center justify-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+          <span>دانلود فایل</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- مودال راهنمای نصب در ویندوز، آیفون و اندروید -->
+  <div id="modal-platform" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-[#0b101d] border border-white/10 w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
+      <div class="flex items-center justify-between pb-2 border-b border-white/5">
+        <h3 class="text-sm font-bold text-white">راهنمای اجرای ۱۰۰٪ رایگان در همه سیستم‌عامل‌ها</h3>
+        <button onclick="closeModals()" class="text-slate-400 hover:text-white p-1">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs leading-relaxed overflow-y-auto pr-1 hide-scrollbar">
+        <!-- ویندوز -->
+        <div class="p-3 rounded-2xl bg-white/5 border border-white/10">
+          <div class="flex items-center gap-2 font-bold text-cyan-400 mb-1">
+            <span>🪟</span>
+            <span>ویندوز (Windows 10 / 11)</span>
+          </div>
+          <p class="text-slate-300 text-[11px]">
+            ۱. اجرای مستقیم با نسخه دسکتاپ Molido Desktop یا مرورگر (PWA).<br>
+            ۲. یا وارد کردن کانفیگ Sing-box / Clash Verge با یک کلیک.
+          </p>
+        </div>
+
+        <!-- اندروید -->
+        <div class="p-3 rounded-2xl bg-white/5 border border-white/10">
+          <div class="flex items-center gap-2 font-bold text-emerald-400 mb-1">
+            <span>🤖</span>
+            <span>اندروید (Android)</span>
+          </div>
+          <p class="text-slate-300 text-[11px]">
+            ۱. نصب مستقیم اپلیکیشن APK بومی MolidoVPN با هسته پلاسما.<br>
+            ۲. سازگاری کامل با v2rayNG، Hiddify و Sing-box.
+          </p>
+        </div>
+
+        <!-- آیفون -->
+        <div class="p-3 rounded-2xl bg-white/5 border border-white/10">
+          <div class="flex items-center gap-2 font-bold text-indigo-400 mb-1">
+            <span>🍏</span>
+            <span>آیفون و آیپد (iOS)</span>
+          </div>
+          <p class="text-slate-300 text-[11px]">
+            ۱. افزودن وب‌اپ Molido VPN به صفحه اصلی (Add to Home Screen).<br>
+            ۲. کپی لینک اشتراک و ایمپورت مستقیم در برنامه‌های رایگان Shadowrocket، Sing-box iOS، Stash یا Streisand.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // مشخصات پایگاه داده سرورها و پروتکل‌ها
+    const APP_STATE = {
+      connected: false,
+      connecting: false,
+      sessionSeconds: 0,
+      sessionTimer: null,
+      trafficTimer: null,
+      routingMode: 'smart',
+      exportFormat: 'vless',
+      selectedNodeIndex: 0, // 0: Germany
+      isAuto: true,
+      nodes: [
+        { id: 'de-fra', name: 'آلمان - فرانکفورت', flag: '🇩🇪', ping: 28, protocol: 'VLESS-Reality', port: 443, host: 'fra.molido-cloud.net' },
+        { id: 'nl-ams', name: 'هلند - آمستردام', flag: '🇳🇱', ping: 34, protocol: 'Hysteria 2', port: 8443, host: 'ams.molido-cloud.net' },
+        { id: 'fi-hel', name: 'فنلاند - هلسینکی', flag: '🇫🇮', ping: 41, protocol: 'VLESS-Reality', port: 443, host: 'hel.molido-cloud.net' },
+        { id: 'us-nyc', name: 'آمریکا - نیویورک', flag: '🇺🇸', ping: 95, protocol: 'TUIC v5', port: 10443, host: 'nyc.molido-cloud.net' },
+        { id: 'jp-tyo', name: 'ژاپن - توکیو', flag: '🇯🇵', ping: 110, protocol: 'Trojan-gRPC', port: 443, host: 'tyo.molido-cloud.net' },
+        { id: 'sg-sin', name: 'سنگاپور - نود آسیا', flag: '🇸🇬', ping: 88, protocol: 'Shadowsocks-2022', port: 8388, host: 'sin.molido-cloud.net' },
+        { id: 'ch-zrh', name: 'سوئیس - زوریخ', flag: '🇨🇭', ping: 32, protocol: 'WireGuard-WARP', port: 51820, host: 'zrh.molido-cloud.net' }
+      ]
+    };
+
+    // Canvas انیمیشن هسته پلاسما
+    const canvas = document.getElementById('plasma-canvas');
+    const ctx = canvas.getContext('2d');
+    let particles = [];
+    let plasmaAngle = 0;
+
+    function initPlasmaParticles() {
+      particles = [];
+      for (let i = 0; i < 35; i++) {
+        particles.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          radius: Math.random() * 2.2 + 0.8,
+          speed: Math.random() * 0.8 + 0.3,
+          angle: Math.random() * Math.PI * 2,
+          alpha: Math.random() * 0.6 + 0.2
+        });
+      }
+    }
+
+    function renderPlasma() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+      const isConn = APP_STATE.connected;
+
+      plasmaAngle += isConn ? 0.03 : 0.01;
+
+      // ذرات معلق و دنباله‌دار
+      particles.forEach((p, idx) => {
+        p.angle += p.speed * (isConn ? 0.025 : 0.01);
+        const dist = 55 + Math.sin(plasmaAngle + idx) * 35;
+        const px = cx + Math.cos(p.angle) * dist;
+        const py = cy + Math.sin(p.angle) * dist;
+
+        ctx.beginPath();
+        ctx.arc(px, py, p.radius, 0, Math.PI * 2);
+        ctx.fillStyle = isConn 
+          ? `rgba(52, 211, 153, ${p.alpha})`
+          : `rgba(6, 182, 212, ${p.alpha})`;
+        ctx.fill();
+
+        // خطوط شعاعی انرژی
+        if (isConn && idx % 3 === 0) {
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(px, py);
+          ctx.strokeStyle = `rgba(52, 211, 153, ${0.1 * p.alpha})`;
+          ctx.stroke();
+        }
+      });
+
+      requestAnimationFrame(renderPlasma);
+    }
+
+    initPlasmaParticles();
+    renderPlasma();
+
+    // سوئیچ وضعیت اتصال
+    function handleConnectToggle() {
+      if (APP_STATE.connecting) return;
+
+      if (APP_STATE.connected) {
+        // قطع اتصال
+        APP_STATE.connected = false;
+        clearInterval(APP_STATE.sessionTimer);
+        clearInterval(APP_STATE.trafficTimer);
+        APP_STATE.sessionSeconds = 0;
+        document.getElementById('dl-meter').innerText = '0.0';
+        document.getElementById('ul-meter').innerText = '0.0';
+        document.getElementById('session-time').innerText = '00:00:00';
+        updateUI();
+      } else {
+        // شروع اتصال با ترنزیشن هندشیک
+        APP_STATE.connecting = true;
+        updateUI();
+
+        setTimeout(() => {
+          APP_STATE.connecting = false;
+          APP_STATE.connected = true;
+          startSessionTimer();
+          startTrafficSimulation();
+          updateUI();
+        }, 1200);
+      }
+    }
+
+    function updateUI() {
+      const isConn = APP_STATE.connected;
+      const isLinking = APP_STATE.connecting;
+      const node = APP_STATE.nodes[APP_STATE.selectedNodeIndex];
+
+      // هاله و دکمه مرکزی
+      const outerGlow = document.getElementById('plasma-outer-glow');
+      const powerIcon = document.getElementById('power-icon');
+      const btnLabel = document.getElementById('connect-btn-label');
+      const headline = document.getElementById('status-headline');
+      const subline = document.getElementById('status-subline');
+
+      if (isConn) {
+        outerGlow.className = 'absolute -inset-10 rounded-full bg-emerald-500/35 blur-3xl animate-pulse';
+        powerIcon.className = 'w-14 h-14 text-emerald-400';
+        btnLabel.innerText = 'PROTECTED';
+        btnLabel.className = 'text-xs font-mono tracking-widest uppercase mt-2 text-emerald-300 font-bold';
+        headline.innerText = `تونل ایمن برقرار است (${node.name})`;
+        headline.className = 'text-xs font-bold text-emerald-400 block';
+        subline.innerText = `حالت مسیریابی: ${APP_STATE.routingMode === 'smart' ? 'هوشمند (دور زدن ترافیک داخلی)' : 'سراسری'}`;
+      } else if (isLinking) {
+        outerGlow.className = 'absolute -inset-8 rounded-full bg-cyan-400/50 blur-2xl animate-spin';
+        powerIcon.className = 'w-14 h-14 text-cyan-300 animate-pulse';
+        btnLabel.innerText = 'LINKING...';
+        btnLabel.className = 'text-xs font-mono tracking-widest uppercase mt-2 text-cyan-300 font-bold';
+        headline.innerText = 'در حال مبادله کلیدها و تست نود...';
+        headline.className = 'text-xs font-bold text-cyan-400 block';
+        subline.innerText = 'اتصال با پروتکل ضد بازرسی عمیق بسته‌ها';
+      } else {
+        outerGlow.className = 'absolute -inset-6 rounded-full bg-cyan-500/15 blur-xl';
+        powerIcon.className = 'w-14 h-14 text-cyan-400';
+        btnLabel.innerText = 'CONNECT';
+        btnLabel.className = 'text-xs font-mono tracking-widest uppercase mt-2 text-cyan-300 font-bold';
+        headline.innerText = 'آماده برای برقراری ارتباط ایمن';
+        headline.className = 'text-xs font-bold text-slate-300 block';
+        subline.innerText = 'رمزگذاری ترافیک سرتاسری بدون ثبت لاگ';
+      }
+
+      // کارت هدر سرور
+      document.getElementById('country-flag-icon').innerText = node.flag;
+      document.getElementById('country-name-label').innerText = node.name;
+      document.getElementById('protocol-display-badge').innerText = `${node.protocol} • Port ${node.port}`;
+      document.getElementById('ping-badge').innerText = `${node.ping} ms`;
+      document.getElementById('auto-badge').style.display = APP_STATE.isAuto ? 'inline-block' : 'none';
+    }
+
+    function startSessionTimer() {
+      APP_STATE.sessionTimer = setInterval(() => {
+        APP_STATE.sessionSeconds++;
+        const h = String(Math.floor(APP_STATE.sessionSeconds / 3600)).padStart(2, '0');
+        const m = String(Math.floor((APP_STATE.sessionSeconds % 3600) / 60)).padStart(2, '0');
+        const s = String(APP_STATE.sessionSeconds % 60).padStart(2, '0');
+        document.getElementById('session-time').innerText = `${h}:${m}:${s}`;
+      }, 1000);
+    }
+
+    function startTrafficSimulation() {
+      APP_STATE.trafficTimer = setInterval(() => {
+        if (APP_STATE.connected) {
+          const dl = (Math.random() * 32 + 8).toFixed(1);
+          const ul = (Math.random() * 8 + 1).toFixed(1);
+          document.getElementById('dl-meter').innerText = dl;
+          document.getElementById('ul-meter').innerText = ul;
+        }
+      }, 900);
+    }
+
+    // حالت‌های مسیریابی
+    function setRoutingMode(mode) {
+      APP_STATE.routingMode = mode;
+      ['smart', 'global', 'direct'].forEach(m => {
+        const btn = document.getElementById(`route-${m}-btn`);
+        if (m === mode) {
+          btn.className = 'py-1.5 px-2 rounded-lg text-xs font-bold transition text-center bg-cyan-500 text-black shadow';
+        } else {
+          btn.className = 'py-1.5 px-2 rounded-lg text-xs font-medium transition text-center text-slate-400 hover:text-white';
+        }
+      });
+      updateUI();
+    }
+
+    // مودال‌ها و سرورها
+    function openNodeSelector() {
+      const container = document.getElementById('node-list-container');
+      container.innerHTML = APP_STATE.nodes.map((n, i) => `
+        <div onclick="selectNode(${i})" class="p-3 rounded-2xl bg-white/5 border ${APP_STATE.selectedNodeIndex === i && !APP_STATE.isAuto ? 'border-cyan-400 bg-cyan-950/20' : 'border-white/5'} flex items-center justify-between cursor-pointer hover:bg-white/10 transition">
+          <div class="flex items-center gap-3">
+            <span class="text-xl">${n.flag}</span>
+            <div>
+              <span class="text-xs font-bold text-white block">${n.name}</span>
+              <span class="text-[10px] text-slate-400 font-mono">${n.protocol}</span>
+            </div>
+          </div>
+          <div class="text-left font-mono">
+            <span class="text-xs font-bold ${n.ping < 50 ? 'text-emerald-400' : 'text-amber-400'}">${n.ping} ms</span>
+          </div>
+        </div>
+      `).join('');
+
+      document.getElementById('modal-nodes').classList.remove('hidden');
+    }
+
+    function selectNode(index) {
+      if (index === -1) {
+        APP_STATE.isAuto = true;
+        // خودکار سریع‌ترین پینگ را انتخاب می‌کند
+        let minPing = 999;
+        let bestIdx = 0;
+        APP_STATE.nodes.forEach((n, idx) => {
+          if (n.ping < minPing) { minPing = n.ping; bestIdx = idx; }
+        });
+        APP_STATE.selectedNodeIndex = bestIdx;
+      } else {
+        APP_STATE.isAuto = false;
+        APP_STATE.selectedNodeIndex = index;
+      }
+      closeModals();
+      updateUI();
+    }
+
+    // خروجی کانفیگ و اشتراک
+    function openExportModal() {
+      generateConfigOutput();
+      document.getElementById('modal-export').classList.remove('hidden');
+    }
+
+    function openPlatformModal() {
+      document.getElementById('modal-platform').classList.remove('hidden');
+    }
+
+    function closeModals() {
+      document.getElementById('modal-nodes').classList.add('hidden');
+      document.getElementById('modal-export').classList.add('hidden');
+      document.getElementById('modal-platform').classList.add('hidden');
+    }
+
+    function setExportFormat(fmt) {
+      APP_STATE.exportFormat = fmt;
+      ['vless', 'hysteria2', 'singbox', 'clash'].forEach(f => {
+        const btn = document.getElementById(`fmt-${f}-btn`);
+        if (f === fmt) {
+          btn.className = 'px-2.5 py-1 rounded-xl text-xs font-bold bg-cyan-500 text-black';
+        } else {
+          btn.className = 'px-2.5 py-1 rounded-xl text-xs font-medium text-slate-400 hover:text-white bg-white/5';
+        }
+      });
+      generateConfigOutput();
+    }
+
+    function generateConfigOutput() {
+      const node = APP_STATE.nodes[APP_STATE.selectedNodeIndex];
+      const uuid = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+      let output = '';
+
+      if (APP_STATE.exportFormat === 'vless') {
+        output = `vless://${uuid}@${node.host}:${node.port}?security=reality&sni=yahoo.com&fp=chrome&pbk=1y2z3a4b5c6d7e8f9g0h&type=tcp&headerType=none#Molido-${node.name.replace(/ /g, '_')}`;
+      } else if (APP_STATE.exportFormat === 'hysteria2') {
+        output = `hysteria2://${uuid}@${node.host}:8443?insecure=1&sni=microsoft.com&alpn=h3#Molido-Hysteria2-${node.name.replace(/ /g, '_')}`;
+      } else if (APP_STATE.exportFormat === 'singbox') {
+        output = JSON.stringify({
+          log: { level: "info" },
+          inbounds: [{ type: "tun", interface_name: "tun0", inet4_address: "172.19.0.1/30", auto_route: true, strict_route: true }],
+          outbounds: [{
+            type: "vless",
+            tag: "proxy",
+            server: node.host,
+            server_port: node.port,
+            uuid: uuid,
+            flow: "xtls-rprx-vision",
+            tls: { enabled: true, server_name: "yahoo.com", reality: { enabled: true, public_key: "1y2z3a4b5c6d7e8f9g0h" } }
+          }],
+          route: { rules: [{ geoip: ["ir", "private"], outbound: "direct" }, { geosite: ["category-ads-all"], outbound: "block" }] }
+        }, null, 2);
+      } else if (APP_STATE.exportFormat === 'clash') {
+        output = `proxies:\n  - name: "Molido-${node.name}"\n    type: vless\n    server: ${node.host}\n    port: ${node.port}\n    uuid: ${uuid}\n    cipher: auto\n    tls: true\n    reality-opts:\n      public-key: 1y2z3a4b5c6d7e8f9g0h\n    servername: yahoo.com\n    client-fingerprint: chrome`;
+      }
+
+      document.getElementById('config-output-area').value = output;
+    }
+
+    function copyCurrentConfig() {
+      const area = document.getElementById('config-output-area');
+      area.select();
+      navigator.clipboard.writeText(area.value);
+      alert('کانفیگ با موفقیت در کلیپ‌بورد کپی شد!');
+    }
+
+    function downloadConfigFile() {
+      const val = document.getElementById('config-output-area').value;
+      const ext = APP_STATE.exportFormat === 'singbox' ? 'json' : APP_STATE.exportFormat === 'clash' ? 'yaml' : 'txt';
+      const blob = new Blob([val], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `molido-${APP_STATE.exportFormat}.${ext}`;
+      a.click();
+    }
+
+    // ثبت Service Worker برای قابلیت PWA
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+      });
+    }
+
+    updateUI();
+  </script>
+</body>
+</html>

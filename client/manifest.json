@@ -1,0 +1,24 @@
+{
+  "name": "Molido VPN - Plasma Holographic Client",
+  "short_name": "Molido VPN",
+  "description": "کلاینت رایگان، هوشمند و چندسکویی Molido VPN با هسته پلاسما و پشتیبانی از تمام پروتکل‌ها",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#07090e",
+  "theme_color": "#06b6d4",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

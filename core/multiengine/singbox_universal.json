@@ -1,0 +1,176 @@
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "dns": {
+    "servers": [
+      {
+        "tag": "dns_remote",
+        "address": "https://1.1.1.1/dns-query",
+        "address_resolver": "dns_direct",
+        "strategy": "prefer_ipv4"
+      },
+      {
+        "tag": "dns_direct",
+        "address": "223.5.5.5",
+        "strategy": "prefer_ipv4",
+        "detour": "direct"
+      },
+      {
+        "tag": "dns_block",
+        "address": "rcode://success"
+      }
+    ],
+    "rules": [
+      {
+        "geosite": "category-ads-all",
+        "server": "dns_block",
+        "disable_cache": true
+      },
+      {
+        "geosite": ["ir", "category-ir"],
+        "server": "dns_direct"
+      }
+    ],
+    "final": "dns_remote",
+    "independent_cache": true
+  },
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "interface_name": "molido-tun",
+      "inet4_address": "172.19.0.1/30",
+      "auto_route": true,
+      "strict_route": true,
+      "stack": "mixed",
+      "sniff": true
+    },
+    {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen": "127.0.0.1",
+      "listen_port": 2080,
+      "sniff": true
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "urltest",
+      "tag": "Auto-Fastest",
+      "outbounds": [
+        "DE-Frankfurt-Reality",
+        "NL-Amsterdam-Hy2",
+        "FI-Helsinki-Reality",
+        "US-NewYork-TUIC",
+        "JP-Tokyo-Trojan",
+        "CH-Zurich-WARP"
+      ],
+      "url": "https://www.gstatic.com/generate_204",
+      "interval": "3m",
+      "tolerance": 50
+    },
+    {
+      "type": "selector",
+      "tag": "Proxy",
+      "outbounds": [
+        "Auto-Fastest",
+        "DE-Frankfurt-Reality",
+        "NL-Amsterdam-Hy2",
+        "FI-Helsinki-Reality",
+        "US-NewYork-TUIC",
+        "JP-Tokyo-Trojan",
+        "CH-Zurich-WARP"
+      ],
+      "default": "Auto-Fastest"
+    },
+    {
+      "type": "vless",
+      "tag": "DE-Frankfurt-Reality",
+      "server": "fra.molido-cloud.net",
+      "server_port": 443,
+      "uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "flow": "xtls-rprx-vision",
+      "network": "tcp",
+      "tls": {
+        "enabled": true,
+        "server_name": "yahoo.com",
+        "reality": {
+          "enabled": true,
+          "public_key": "1y2z3a4b5c6d7e8f9g0h1i2j3k4l5m6n7o8p9q0r1s2t",
+          "short_id": "0123456789abcdef"
+        }
+      }
+    },
+    {
+      "type": "hysteria2",
+      "tag": "NL-Amsterdam-Hy2",
+      "server": "ams.molido-cloud.net",
+      "server_port": 8443,
+      "password": "molido-secure-token",
+      "tls": {
+        "enabled": true,
+        "server_name": "microsoft.com",
+        "insecure": true
+      },
+      "brutal": {
+        "enabled": true,
+        "up_mbps": 50,
+        "down_mbps": 150
+      }
+    },
+    {
+      "type": "vless",
+      "tag": "FI-Helsinki-Reality",
+      "server": "hel.molido-cloud.net",
+      "server_port": 443,
+      "uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "flow": "xtls-rprx-vision",
+      "network": "tcp",
+      "tls": {
+        "enabled": true,
+        "server_name": "speedtest.net",
+        "reality": {
+          "enabled": true,
+          "public_key": "1y2z3a4b5c6d7e8f9g0h1i2j3k4l5m6n7o8p9q0r1s2t",
+          "short_id": "0123456789abcdef"
+        }
+      }
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+    {
+      "type": "block",
+      "tag": "block"
+    },
+    {
+      "type": "dns",
+      "tag": "dns-out"
+    }
+  ],
+  "route": {
+    "rules": [
+      {
+        "protocol": "dns",
+        "outbound": "dns-out"
+      },
+      {
+        "geosite": "category-ads-all",
+        "outbound": "block"
+      },
+      {
+        "geoip": ["private", "ir"],
+        "outbound": "direct"
+      },
+      {
+        "geosite": ["ir", "category-ir"],
+        "outbound": "direct"
+      }
+    ],
+    "auto_detect_interface": true,
+    "final": "Proxy"
+  }
+}

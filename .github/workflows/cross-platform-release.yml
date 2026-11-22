@@ -1,0 +1,40 @@
+name: Cross-Platform Release & Verification
+
+on:
+  push:
+    branches:
+      - development/molido-vpn-ai-from-scratch
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-package:
+    name: Package Web & Cross-Platform Client
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Package Web & PWA Bundle
+        run: |
+          mkdir -p dist/web
+          cp -r client/* dist/web/
+          cp -r core/multiengine dist/web/
+          cd dist
+          tar -czf molido-vpn-plasma-client.tar.gz web/
+          zip -r molido-vpn-plasma-client.zip web/
+
+      - name: Upload Web Client Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: molido-plasma-client
+          path: dist/molido-vpn-plasma-client.zip
+          retention-days: 14
