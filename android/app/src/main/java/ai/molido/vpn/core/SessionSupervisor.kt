@@ -116,10 +116,9 @@ class SessionSupervisor(
     @Synchronized
     fun markFailed(engine: EngineSlot): Boolean {
         if (activeEngine != engine || state == SessionState.IDLE) return false
-        // Failure callbacks may arrive after shutdown has already begun (for example,
-        // when the isolated process dies during STOPPING). Never regress the lifecycle
-        // from STOPPING to FAILED, or the confirmed cleanup path cannot release it.
-        if (state != SessionState.STOPPING) state = SessionState.FAILED
+        // A failed stop must leave a retryable FAILED state. Asynchronous engine
+        // failure callbacks are filtered by VpnSessionController once STOPPING begins.
+        state = SessionState.FAILED
         return true
     }
 
