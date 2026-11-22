@@ -72,8 +72,13 @@ class RecoveryAttemptGate(
     /** Only an explicit user/operator action may clear a process-death recovery lockout. */
     @Synchronized
     fun resetAfterExplicitUserAction(): Boolean {
-        val next = PersistedRecoveryAttemptState()
-        if (store != null && !runCatching { store.write(next) }.getOrDefault(false)) return false
+        val next = PersistedRecoveryAttemptState(
+            attemptsStarted = 0,
+            generation = generation,
+            inFlight = false,
+            interrupted = false
+        )
+        if (store?.let { runCatching { it.write(next) }.getOrDefault(false) } == false) return false
         // Keep generations monotonic so a late callback from before reset cannot
         // accidentally match a newly issued token.
         started = 0
