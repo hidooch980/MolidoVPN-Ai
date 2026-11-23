@@ -70,6 +70,8 @@ class MolidoVpnApplication : Application() {
         controlPlaneClient.fetchAndVerify(baseUrl, deviceToken, System.currentTimeMillis() / 1000L)
 
     @Volatile var onNetworkAssessmentChanged: (() -> Unit)? = null
+    /** Survives activity recreation (rotation, reopening) for as long as the tunnel process lives. */
+    @Volatile var handshakeConfirmed = false
 
     fun latestNetworkAssessment(): NetworkAssessment =
         NetworkIntelligenceCore.assess(observation.get(), System.currentTimeMillis())

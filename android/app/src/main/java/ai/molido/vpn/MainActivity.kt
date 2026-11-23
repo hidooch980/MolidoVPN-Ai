@@ -57,7 +57,6 @@ class MainActivity : ComponentActivity() {
     private var countryBuckets: List<CountryBucket> = emptyList()
     private var countedProfileHash: Int? = null
     private var busy = false
-    private var handshakeConfirmed = false
     private var notice: String? = null
     private var connectAfterConsent = false
 
@@ -227,14 +226,14 @@ class MainActivity : ComponentActivity() {
 
     private fun renderState() {
         val state = molidoApp.vpnSessions.snapshot().state
-        if (state != SessionState.RUNNING) handshakeConfirmed = false
+        if (state != SessionState.RUNNING) molidoApp.handshakeConfirmed = false
         refreshCountries()
         val idle = state == SessionState.IDLE
 
         val (title, pillText, color) = when (state) {
             SessionState.IDLE -> Triple("قطع", "قطع", Palette.MUTED)
             SessionState.RESERVED -> Triple("در حال اتصال…", "اتصال…", Palette.ACCENT_2)
-            SessionState.RUNNING -> if (handshakeConfirmed) Triple("متصل", "متصل", Palette.SUCCESS)
+            SessionState.RUNNING -> if (molidoApp.handshakeConfirmed) Triple("متصل", "متصل", Palette.SUCCESS)
                 else Triple("متصل • در انتظار پاسخ سرور", "اتصال…", Palette.ACCENT_2)
             SessionState.STOPPING -> Triple("در حال قطع…", "قطع…", Palette.WARN)
             SessionState.FAILED -> Triple("اتصال با خطا متوقف شد", "خطا", Palette.DANGER)
@@ -361,7 +360,7 @@ class MainActivity : ComponentActivity() {
                     if (answered || isLast) {
                         runOnUiThread {
                             busy = false
-                            handshakeConfirmed = answered
+                            molidoApp.handshakeConfirmed = answered
                             say(if (answered) null else "هیچ سروری پاسخ نداد؛ اتصال را قطع کنید یا پروفایل دیگری امتحان کنید.")
                         }
                         return@execute
