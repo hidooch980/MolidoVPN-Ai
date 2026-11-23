@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Glass shield with an "M" monogram; kept inside the 66dp adaptive-icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Frosted glass body -->
+    <path
+        android:pathData="M54,25L77,33.5V52C77,67 67,77.5 54,83C41,77.5 31,67 31,52V33.5Z"
+        android:strokeWidth="2"
+        android:strokeColor="#E6FFFFFF"
+        android:strokeLineJoin="round">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="31" android:startY="25"
+                android:endX="77" android:endY="83"
+                android:startColor="#59FFFFFF"
+                android:endColor="#14FFFFFF" />
+        </aapt:attr>
+    </path>
+    <!-- Specular highlight on the upper-left edge -->
+    <path
+        android:pathData="M35,36L54,29"
+        android:strokeWidth="2.5"
+        android:strokeColor="#B3FFFFFF"
+        android:strokeLineCap="round" />
+    <!-- M monogram -->
+    <path
+        android:pathData="M42,64V42L54,55L66,42V64"
+        android:strokeWidth="5"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <!-- Connection dot -->
+    <path
+        android:fillColor="#FF67E8F9"
+        android:pathData="M54,71m-2.5,0a2.5,2.5 0,1 1,5 0a2.5,2.5 0,1 1,-5 0" />
+</vector>
