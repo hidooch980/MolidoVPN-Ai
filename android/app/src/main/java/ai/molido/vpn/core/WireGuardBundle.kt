@@ -54,10 +54,16 @@ object WireGuardBundle {
      * The config to connect with: the first one in [countryCode], or the first overall when no
      * country is chosen or none matches. Returns [text] unchanged when it holds no `[Interface]`.
      */
-    fun select(text: String, countryCode: String?): String {
+    fun select(text: String, countryCode: String?): String = candidates(text, countryCode).first()
+
+    /**
+     * Configs to try in order: every config in [countryCode], or all configs when no country is
+     * chosen or none matches. Never empty: returns listOf([text]) when it holds no `[Interface]`.
+     */
+    fun candidates(text: String, countryCode: String?): List<String> {
         val entries = split(text)
-        if (entries.isEmpty()) return text
-        val match = countryCode?.let { code -> entries.firstOrNull { CountryIndex.countryOf(it.name) == code } }
-        return (match ?: entries.first()).text
+        if (entries.isEmpty()) return listOf(text)
+        val matches = countryCode?.let { code -> entries.filter { CountryIndex.countryOf(it.name) == code } }.orEmpty()
+        return (matches.ifEmpty { entries }).map { it.text }
     }
 }

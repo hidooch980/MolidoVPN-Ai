@@ -591,18 +591,37 @@ class MainActivity : ComponentActivity() {
     private fun connectUsingLoadedProfile() {
         val loaded = profileText ?: return
         val countryCode = getSharedPreferences("molido_ui", MODE_PRIVATE).getString("country_code", null)
-        val configuration = WireGuardBundle.select(loaded, countryCode)
+        val candidates = WireGuardBundle.candidates(loaded, countryCode).take(MAX_FAILOVER_ATTEMPTS)
         setControlsEnabled(false)
         molidoApp.vpnExecutor.execute {
-            try {
-                val started = molidoApp.vpnSessions.connect(EngineSlot.WIREGUARD, configuration)
-                runOnUiThread {
-                    setControlsEnabled(true)
-                    if (!started) statusView.text = molidoApp.vpnSessions.latestPathDecision()?.reason ?: "شروع نشست ممکن نشد."
-                    renderState()
+            val sessions = molidoApp.vpnSessions
+            for ((index, configuration) in candidates.withIndex()) {
+                val isLast = index == candidates.lastIndex
+                if (index > 0) runOnUiThread { statusView.text = "تلاش با کانفیگ ${index + 1} از ${candidates.size}…" }
+                val started: Boolean? = try {
+                    sessions.connect(EngineSlot.WIREGUARD, configuration)
+                } catch (_: Throwable) {
+                    null
                 }
-            } catch (_: Throwable) {
-                runOnUiThread { setControlsEnabled(true); renderState("شروع WireGuard ناموفق بود؛ وضعیت پاک‌سازی را بررسی کنید.") }
+                if (started == true) {
+                    runOnUiThread { setControlsEnabled(true); renderState() }
+                    return@execute
+                }
+                // false + IDLE = blocked by network policy: another config would be blocked too.
+                val blocked = started == false && sessions.snapshot().state == SessionState.IDLE
+                if (!blocked && !isLast) {
+                    // Release any TUN ownership the failed attempt kept before trying the next config.
+                    val cleaned = try {
+                        sessions.snapshot().state == SessionState.IDLE || sessions.disconnect()
+                    } catch (_: Throwable) { false }
+                    if (cleaned) continue
+                }
+                if (started == false) runOnUiThread {
+                    setControlsEnabled(true)
+                    statusView.text = sessions.latestPathDecision()?.reason ?:"شروع نشست ممکن نشد."
+                    renderState()
+                } else runOnUiThread { setControlsEnabled(true); renderState("شروع WireGuard ناموفق بود؛ وضعیت پاک‌سازی را بررسی کنید.") }
+                return@execute
             }
         }
     }
@@ -760,6 +779,7 @@ class MainActivity : ComponentActivity() {
     private companion object {
         // Must match AndroidSecureProfileStore.MAX_PROFILE_BYTES so a loaded bundle can be saved.
         const val MAX_PROFILE_BYTES = 64 * 1024
+        const val MAX_FAILOVER_ATTEMPTS = 5
         // Liquid Glass palette (light). WHITE = primary text colour, name kept for minimal churn.
         const val AQUA = 0xFF6366F1.toInt()
         const val PINK = 0xFFF472B6.toInt()

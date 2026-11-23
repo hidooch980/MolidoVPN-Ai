@@ -35,6 +35,17 @@ class WireGuardBundleTest {
     }
 
     @Test
+    fun candidatesListEveryConfigOfTheCountryInOrder() {
+        val bundle = WireGuardBundle.join(listOf("germany-1.conf" to conf("A"), "netherlands.conf" to conf("B"), "germany-2.conf" to conf("C")))
+        val de = WireGuardBundle.candidates(bundle, "DE")
+        assertEquals(2, de.size)
+        assertTrue(de[0].contains("PrivateKey = A"))
+        assertTrue(de[1].contains("PrivateKey = C"))
+        assertEquals(3, WireGuardBundle.candidates(bundle, "JP").size)
+        assertEquals(listOf("vless://x"), WireGuardBundle.candidates("vless://x", "DE"))
+    }
+
+    @Test
     fun textWithoutInterfaceIsReturnedUnchanged() {
         assertEquals("vless://x", WireGuardBundle.select("vless://x", "DE"))
     }
