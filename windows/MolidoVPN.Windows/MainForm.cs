@@ -26,7 +26,7 @@ public sealed class MainForm : Form
     private readonly Label _profiles = new();
     private readonly Button _main = new();
     private readonly ComboBox _server = new();
-    private readonly Button _import = new(), _warp = new(), _clear = new();
+    private readonly Button _import = new(), _sub = new(), _warp = new(), _clear = new();
 
     private List<WgEntry> _entries = new();
     private bool _busy, _connected, _confirmed;
@@ -43,7 +43,7 @@ public sealed class MainForm : Form
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(420, 560);
+        ClientSize = new Size(420, 610);
 
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(20), ColumnCount = 1, BackColor = Bg };
         Controls.Add(root);
@@ -79,7 +79,7 @@ public sealed class MainForm : Form
 
         root.Controls.Add(MakeLabel("پروفایلها", 10f, Muted, bold: true));
         var actions = MakeCard();
-        foreach (var (b, text) in new[] { (_clear, "حذف همه پروفایلها"), (_warp, "دریافت کانفیگ رایگان WARP"), (_import, "وارد کردن فایل WireGuard") })
+        foreach (var (b, text) in new[] { (_clear, "حذف همه پروفایلها"), (_warp, "دریافت کانفیگ رایگان WARP"), (_sub, "وارد کردن از لینک اشتراک"), (_import, "وارد کردن فایل WireGuard") })
         {
             StyleButton(b, Surface2, 10f);
             b.Text = text; b.Dock = DockStyle.Top; b.Height = 40;
@@ -89,8 +89,9 @@ public sealed class MainForm : Form
         _clear.ForeColor = Danger;
         _import.Click += (_, _) => ImportFiles();
         _warp.Click += async (_, _) => await AddWarpAsync();
+        _sub.Click += async (_, _) => await ImportSubscriptionAsync();
         _clear.Click += (_, _) => ClearProfiles();
-        actions.Height = 160;
+        actions.Height = 210;
         root.Controls.Add(actions);
 
         root.Controls.Add(MakeLabel($"نسخه {Application.ProductVersion} • دادهها فقط روی همین کامپیوتر", 8.5f, Muted, bold: false));
@@ -146,7 +147,7 @@ public sealed class MainForm : Form
         _main.Text = _connected || _busy ? "قطع اتصال" : "اتصال";
         _main.BackColor = _connected || _busy ? Danger : Accent;
         var editable = !_busy && !_connected;
-        foreach (Control c in new Control[] { _server, _import, _warp, _clear }) c.Enabled = editable;
+        foreach (Control c in new Control[] { _server, _import, _sub, _warp, _clear }) c.Enabled = editable;
     }
 
     // ---------- Actions ----------
@@ -254,6 +255,71 @@ public sealed class MainForm : Form
         catch (Exception) { message = "دریافت WARP ناموفق بود؛ شاید در شبکه شما مسدود باشد."; }
         _busy = false;
         Say(message);
+    }
+
+    private async Task ImportSubscriptionAsync()
+    {
+        var url = AskLink();
+        if (url == null) return;
+        if (!url.Trim().StartsWith("https://", StringComparison.OrdinalIgnoreCase)) { Say("فقط لینک https پذیرفته میشود."); return; }
+        _busy = true;
+        Say("در حال دریافت لینک اشتراک…");
+        string message;
+        try
+        {
+            var result = await Subscription.FetchAsync(url, CancellationToken.None);
+            if (result.WireGuardCount == 0)
+            {
+                message = result.UnsupportedCount > 0
+                    ? $"{result.UnsupportedCount} کانفیگ پیدا شد ولی هیچکدام WireGuard نبود؛ این نسخه فقط WireGuard را پشتیبانی میکند."
+                    : "کانفیگ قابل استفادهای در این لینک پیدا نشد.";
+            }
+            else
+            {
+                var all = string.Join("\n\n", _entries.Select(e => e.Text).Append(result.WireGuardText));
+                if (Encoding.UTF8.GetByteCount(all) > ProfileStore.MaxBytes)
+                    message = "حجم پروفایلها از حد مجاز بیشتر میشود؛ ابتدا پروفایلهای قبلی را حذف کنید.";
+                else
+                {
+                    SetEntries(all, save: true);
+                    var skipped = result.UnsupportedCount > 0 ? $" ({result.UnsupportedCount} کانفیگ غیر WireGuard نادیده گرفته شد)" : "";
+                    message = $"{result.WireGuardCount} کانفیگ WireGuard اضافه شد{skipped}.";
+                }
+            }
+        }
+        catch (Exception) { message = "دریافت لینک ناموفق بود؛ لینک یا اتصال را بررسی کنید."; }
+        _busy = false;
+        Say(message);
+    }
+
+    /// <summary>Small dialog for the subscription link; null when cancelled.</summary>
+    private string? AskLink()
+    {
+        using var dialog = new Form
+        {
+            Text = "لینک اشتراک", RightToLeft = RightToLeft.Yes, RightToLeftLayout = true,
+            FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false,
+            StartPosition = FormStartPosition.CenterParent, ClientSize = new Size(380, 150),
+            BackColor = Surface, ForeColor = TextC, Font = Font,
+        };
+        var hint = new Label
+        {
+            Text = "لینک اشتراکی که خودتان دارید را وارد کنید. فعلاً فقط کانفیگهای WireGuard داخل آن وارد میشوند.",
+            Location = new Point(14, 12), Size = new Size(352, 44), ForeColor = Muted,
+        };
+        var box = new TextBox
+        {
+            Location = new Point(14, 62), Width = 352, RightToLeft = RightToLeft.No,
+            BackColor = Surface2, ForeColor = TextC, BorderStyle = BorderStyle.FixedSingle, PlaceholderText = "https://…",
+        };
+        var ok = new Button { Text = "دریافت", DialogResult = DialogResult.OK, Location = new Point(14, 104), Size = new Size(110, 34) };
+        var cancel = new Button { Text = "انصراف", DialogResult = DialogResult.Cancel, Location = new Point(134, 104), Size = new Size(110, 34) };
+        StyleButton(ok, Accent, 10f);
+        StyleButton(cancel, Surface2, 10f);
+        dialog.Controls.AddRange(new Control[] { hint, box, ok, cancel });
+        dialog.AcceptButton = ok;
+        dialog.CancelButton = cancel;
+        return dialog.ShowDialog(this) == DialogResult.OK && box.Text.Trim().Length > 0 ? box.Text.Trim() : null;
     }
 
     private void ClearProfiles()
