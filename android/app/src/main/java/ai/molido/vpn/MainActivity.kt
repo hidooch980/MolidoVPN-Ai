@@ -788,7 +788,7 @@ class MainActivity : ComponentActivity() {
         button.isEnabled = false
         statusView.text = "در حال ثبت دستگاه در Cloudflare WARP…"
         Thread {
-            val config = runCatching { WarpRegistration.register() }.getOrNull()
+            val config = runCatching { WarpRegistration.withEndpoints(WarpRegistration.register(), WARP_ENDPOINT_VARIANTS) }.getOrNull()
             runOnUiThread {
                 button.isEnabled = true
                 if (config == null) {
@@ -821,7 +821,8 @@ class MainActivity : ComponentActivity() {
     private companion object {
         // Must match AndroidSecureProfileStore.MAX_PROFILE_BYTES so a loaded bundle can be saved.
         const val MAX_PROFILE_BYTES = 64 * 1024
-        const val MAX_FAILOVER_ATTEMPTS = 5
+        const val MAX_FAILOVER_ATTEMPTS = 8
+        const val WARP_ENDPOINT_VARIANTS = 6
         const val HANDSHAKE_TIMEOUT_MS = 8_000L
         // Liquid Glass palette (light). WHITE = primary text colour, name kept for minimal churn.
         const val AQUA = 0xFF6366F1.toInt()
