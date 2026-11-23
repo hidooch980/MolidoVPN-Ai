@@ -1,0 +1,48 @@
+name: Build and Release Windows EXE
+
+# Runs after the APK release so the exe is attached to the same (latest) release.
+on:
+  workflow_run:
+    workflows: ["Build and Release Android APK"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish single-file exe
+        shell: pwsh
+        run: |
+          dotnet publish windows/MolidoVPN.Windows/MolidoVPN.Windows.csproj -c Release -o out
+          if (!(Test-Path out/MolidoVPN.exe)) { throw "MolidoVPN.exe was not produced" }
+
+      - name: Attach to latest release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = gh release view --json tagName -q .tagName
+          if (!$tag) { throw "No release found" }
+          $exe = "MolidoVPN-$tag-windows-x64.exe"
+          Copy-Item out/MolidoVPN.exe $exe
+          (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower() + "  $exe" | Out-File -Encoding ascii "$exe.sha256"
+          gh release upload $tag $exe "$exe.sha256" --clobber
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: molidovpn-windows
+          path: out/MolidoVPN.exe
+          retention-days: 14
