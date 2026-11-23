@@ -6,18 +6,19 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RadialGradient
+import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.SweepGradient
 import android.util.AttributeSet
 import android.view.View
 import android.view.animation.LinearInterpolator
 import ai.molido.vpn.core.SessionState
-import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Native Android hardware-accelerated Holographic Plasma Core View.
- * Renders an animated energy orb, rotating plasma rings, and glowing particles.
+ * "Liquid Glass" connection orb: a gently floating frosted-glass disc surrounded by a
+ * rotating pink -> indigo -> cyan halo. Halo tint follows the VPN session state.
+ * Public API (setSessionState) is unchanged from the previous plasma core.
  */
 class PlasmaCoreView @JvmOverloads constructor(
     context: Context,
@@ -25,42 +26,30 @@ class PlasmaCoreView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
 
-    private var rotationAngle = 0f
-    private var pulseScale = 1f
+    private var angle = 0f
+    private var phase = 0f
     private var currentState: SessionState = SessionState.IDLE
 
-    private val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val corePaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val glassPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val edgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = Color.WHITE }
+    private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 4f
+        strokeCap = Paint.Cap.ROUND
     }
-    private val particlePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val arcRect = RectF()
 
-    private val animator = ValueAnimator.ofFloat(0f, 360f).apply {
+    private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
         duration = 6000L
         repeatCount = ValueAnimator.INFINITE
         interpolator = LinearInterpolator()
-        addUpdateListener { animation ->
-            rotationAngle = animation.animatedValue as Float
-            val fraction = animation.animatedFraction
-            pulseScale = 0.95f + 0.1f * sin(fraction * Math.PI.toFloat() * 2f)
+        addUpdateListener {
+            val f = it.animatedValue as Float
+            angle = f * 360f
+            phase = f
             invalidate()
         }
-    }
-
-    private data class Particle(val angle: Float, val distRatio: Float, val radius: Float, val alpha: Int)
-    private val particles = List(24) { i ->
-        Particle(
-            angle = (i * (360f / 24f)),
-            distRatio = 0.55f + ((i % 5) * 0.08f),
-            radius = 2.5f + (i % 3) * 1.5f,
-            alpha = 100 + (i % 6) * 25
-        )
-    }
-
-    init {
-        animator.start()
     }
 
     fun setSessionState(state: SessionState) {
@@ -70,101 +59,70 @@ class PlasmaCoreView @JvmOverloads constructor(
         }
     }
 
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        val w = width.toFloat()
-        val h = height.toFloat()
-        if (w <= 0f || h <= 0f) return
-
-        val cx = w / 2f
-        val cy = h / 2f
-        val maxRadius = minOf(cx, cy) * 0.9f
-
-        // Colors based on session state
-        val (glowColor, coreCenterColor, coreEdgeColor) = when (currentState) {
-            SessionState.RUNNING -> Triple(
-                Color.argb(80, 16, 185, 129),   // Emerald
-                Color.rgb(52, 211, 153),
-                Color.rgb(6, 95, 70)
-            )
-            SessionState.RESERVED -> Triple(
-                Color.argb(90, 6, 182, 212),    // Cyan
-                Color.rgb(56, 189, 248),
-                Color.rgb(79, 70, 229)
-            )
-            SessionState.STOPPING -> Triple(
-                Color.argb(80, 245, 158, 11),   // Amber
-                Color.rgb(251, 191, 36),
-                Color.rgb(180, 83, 9)
-            )
-            SessionState.FAILED -> Triple(
-                Color.argb(80, 239, 68, 68),    // Red
-                Color.rgb(248, 113, 113),
-                Color.rgb(153, 27, 27)
-            )
-            SessionState.IDLE -> Triple(
-                Color.argb(40, 100, 116, 139),  // Muted Slate
-                Color.rgb(148, 163, 184),
-                Color.rgb(30, 41, 59)
-            )
-        }
-
-        // 1. Outer Halo
-        haloPaint.shader = RadialGradient(
-            cx, cy, maxRadius * pulseScale,
-            intArrayOf(glowColor, Color.TRANSPARENT),
-            floatArrayOf(0.3f, 1f),
-            Shader.TileMode.CLAMP
-        )
-        canvas.drawCircle(cx, cy, maxRadius * pulseScale, haloPaint)
-
-        // 2. Rotating Rings
-        canvas.save()
-        canvas.rotate(rotationAngle, cx, cy)
-        ringPaint.color = Color.argb(120, Color.red(coreCenterColor), Color.green(coreCenterColor), Color.blue(coreCenterColor))
-        canvas.drawCircle(cx, cy, maxRadius * 0.72f, ringPaint)
-
-        // Segmented ring
-        ringPaint.strokeWidth = 2f
-        ringPaint.color = Color.argb(80, 255, 255, 255)
-        for (i in 0 until 8) {
-            val a = Math.toRadians((i * 45.0)).toFloat()
-            val startX = cx + (maxRadius * 0.76f) * cos(a)
-            val startY = cy + (maxRadius * 0.76f) * sin(a)
-            val endX = cx + (maxRadius * 0.82f) * cos(a)
-            val endY = cy + (maxRadius * 0.82f) * sin(a)
-            canvas.drawLine(startX, startY, endX, endY, ringPaint)
-        }
-        canvas.restore()
-
-        // 3. Floating Particles
-        val particleSpeedMultiplier = if (currentState == SessionState.RUNNING) 2f else 1f
-        particles.forEach { p ->
-            val rad = Math.toRadians((p.angle + rotationAngle * particleSpeedMultiplier).toDouble())
-            val px = cx + (maxRadius * p.distRatio) * cos(rad).toFloat()
-            val py = cy + (maxRadius * p.distRatio) * sin(rad).toFloat()
-            particlePaint.color = Color.argb(p.alpha, Color.red(coreCenterColor), Color.green(coreCenterColor), Color.blue(coreCenterColor))
-            canvas.drawCircle(px, py, p.radius, particlePaint)
-        }
-
-        // 4. Central Glowing Plasma Core
-        val coreRadius = maxRadius * 0.48f * pulseScale
-        corePaint.shader = RadialGradient(
-            cx - coreRadius * 0.2f, cy - coreRadius * 0.2f, coreRadius,
-            intArrayOf(coreCenterColor, coreEdgeColor),
-            floatArrayOf(0.1f, 1f),
-            Shader.TileMode.CLAMP
-        )
-        canvas.drawCircle(cx, cy, coreRadius, corePaint)
-
-        // 5. Inner Core Specular Highlight
-        corePaint.shader = null
-        corePaint.color = Color.argb(90, 255, 255, 255)
-        canvas.drawCircle(cx - coreRadius * 0.25f, cy - coreRadius * 0.25f, coreRadius * 0.25f, corePaint)
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (!animator.isStarted) animator.start()
     }
 
     override fun onDetachedFromWindow() {
-        super.onDetachedFromWindow()
         animator.cancel()
+        super.onDetachedFromWindow()
+    }
+
+    private fun palette(): IntArray = when (currentState) {
+        SessionState.RUNNING -> intArrayOf(0xFF34D399.toInt(), 0xFF22D3EE.toInt(), 0xFF6366F1.toInt())
+        SessionState.RESERVED -> intArrayOf(0xFF22D3EE.toInt(), 0xFF818CF8.toInt(), 0xFFF472B6.toInt())
+        SessionState.STOPPING -> intArrayOf(0xFFFBBF24.toInt(), 0xFFF472B6.toInt(), 0xFFFB923C.toInt())
+        SessionState.FAILED -> intArrayOf(0xFFF87171.toInt(), 0xFFF472B6.toInt(), 0xFFDC2626.toInt())
+        SessionState.IDLE -> intArrayOf(0xFFF472B6.toInt(), 0xFF818CF8.toInt(), 0xFF22D3EE.toInt())
+    }
+
+    private fun withAlpha(c: Int, a: Int) = Color.argb(a, Color.red(c), Color.green(c), Color.blue(c))
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val w = width.toFloat(); val h = height.toFloat()
+        if (w <= 0f || h <= 0f) return
+        val r = minOf(w, h) / 2f * 0.92f
+        val cx = w / 2f
+        val cy = h / 2f + sin(phase * Math.PI * 2).toFloat() * r * 0.04f
+        val p = palette()
+
+        // 1. Soft coloured glow
+        glowPaint.shader = RadialGradient(cx, cy, r,
+            intArrayOf(withAlpha(p[1], 110), withAlpha(p[0], 60), Color.TRANSPARENT),
+            floatArrayOf(0.45f, 0.75f, 1f), Shader.TileMode.CLAMP)
+        canvas.drawCircle(cx, cy, r, glowPaint)
+
+        // 2. Rotating liquid gradient ring
+        canvas.save()
+        canvas.rotate(angle, cx, cy)
+        ringPaint.strokeWidth = r * 0.16f
+        ringPaint.shader = SweepGradient(cx, cy, intArrayOf(p[0], p[1], p[2], p[0]), null)
+        ringPaint.alpha = 210
+        canvas.drawCircle(cx, cy, r * 0.74f, ringPaint)
+        canvas.restore()
+
+        // 3. Frosted glass disc
+        val gr = r * 0.62f
+        glassPaint.shader = RadialGradient(cx - gr * 0.3f, cy - gr * 0.35f, gr * 1.4f,
+            intArrayOf(Color.argb(250, 255, 255, 255), Color.argb(200, 238, 242, 255)),
+            null, Shader.TileMode.CLAMP)
+        canvas.drawCircle(cx, cy, gr, glassPaint)
+        edgePaint.strokeWidth = r * 0.02f
+        canvas.drawCircle(cx, cy, gr, edgePaint)
+
+        // 4. Specular highlight
+        glassPaint.shader = null
+        glassPaint.color = Color.argb(150, 255, 255, 255)
+        canvas.drawCircle(cx - gr * 0.38f, cy - gr * 0.42f, gr * 0.18f, glassPaint)
+
+        // 5. Power icon
+        val ir = gr * 0.36f
+        iconPaint.strokeWidth = r * 0.06f
+        iconPaint.color = if (currentState == SessionState.RUNNING) 0xFF059669.toInt() else 0xFF6366F1.toInt()
+        arcRect.set(cx - ir, cy - ir, cx + ir, cy + ir)
+        canvas.drawArc(arcRect, -60f, 300f, false, iconPaint)
+        canvas.drawLine(cx, cy - ir * 1.25f, cx, cy - ir * 0.15f, iconPaint)
     }
 }

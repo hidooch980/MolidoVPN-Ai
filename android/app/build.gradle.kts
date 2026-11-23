@@ -24,8 +24,9 @@ android {
         applicationId = "ai.molido.vpn"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        // CI sets MOLIDO_VERSION_CODE (GitHub run number) and MOLIDO_VERSION_NAME (e.g. 1.1.<run>).
+        versionCode = System.getenv("MOLIDO_VERSION_CODE")?.toIntOrNull() ?: 2
+        versionName = System.getenv("MOLIDO_VERSION_NAME")?.takeIf { it.isNotBlank() } ?: "1.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

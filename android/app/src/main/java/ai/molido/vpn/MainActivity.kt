@@ -10,7 +10,11 @@ import android.net.VpnService
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.Spinner
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -39,6 +43,17 @@ class MainActivity : ComponentActivity() {
     private lateinit var profileImportButton: Button
     private lateinit var wireGuardStateView: TextView
     private lateinit var plasmaCoreView: PlasmaCoreView
+    private lateinit var statusChip: TextView
+    private lateinit var netStatusValue: TextView
+    private lateinit var netTransportValue: TextView
+    private lateinit var netMeteredValue: TextView
+    private lateinit var netBandwidthValue: TextView
+    private lateinit var policySpinner: Spinner
+    private lateinit var countrySpinner: Spinner
+    private val COUNTRIES = listOf(
+        "🌐 خودکار (بهترین سرور)", "🇩🇪 آلمان", "🇳🇱 هلند", "🇫🇮 فنلاند", "🇫🇷 فرانسه", "🇬🇧 انگلستان",
+        "🇸🇪 سوئد", "🇨🇭 سوئیس", "🇹🇷 ترکیه", "🇦🇪 امارات", "🇺🇸 آمریکا", "🇨🇦 کانادا", "🇯🇵 ژاپن", "🇸🇬 سنگاپور"
+    )
     private var controlsBusy = false
     private val policyButtons = mutableMapOf<NetworkPolicy, Button>()
     private var profileText: String? = null
@@ -95,9 +110,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = Color.rgb(5, 20, 29)
-        window.navigationBarColor = Color.rgb(5, 20, 29)
-        window.decorView.systemUiVisibility = 0
+        window.statusBarColor = BG
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        window.navigationBarColor = BG_END
         buildDashboard()
         renderState()
     }
@@ -116,75 +132,92 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun buildDashboard() {
+        val root = FrameLayout(this).apply {
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(BG, BG_MID, BG_END))
+        }
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(18), dp(18), dp(20))
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                intArrayOf(Color.rgb(5, 20, 29), Color.rgb(7, 31, 42), Color.rgb(5, 20, 29))
-            )
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+            setPadding(dp(20), dp(20), dp(20), dp(28))
         }
-        val scroll = ScrollView(this).apply { isFillViewport = true; addView(page) }
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = false
+            addView(page)
+        }
+        root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
 
-        val header = row()
-        header.addView(label("◆  MolidoVPN", 23f, AQUA, true), LinearLayout.LayoutParams(0, dp(52), 1f))
-        header.addView(pill("AI • SECURE", GOLD))
+        // Top bar: brand + live status chip
+        val header = row().apply { gravity = Gravity.CENTER_VERTICAL }
+        val brand = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        brand.addView(label("MolidoVPN", 22f, WHITE, true))
+        brand.addView(label("اتصال خصوصی، بدون ردیابی", 12f, MUTED, false))
+        header.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
+        statusChip = pill("●  قطع", MUTED)
+        header.addView(statusChip)
         page.addView(header)
 
-        val hero = card()
-        hero.addView(label("وضعیت اتصال", 14f, MUTED, true))
-        statusView = label("در حال بررسی وضعیت…", 19f, WHITE, true).apply { setPadding(0, dp(8), 0, dp(8)) }
-        hero.addView(statusView)
-        
-        plasmaCoreView = PlasmaCoreView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(160), dp(160)).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-                topMargin = dp(8)
-                bottomMargin = dp(12)
-            }
+        // Hero: orb, status, one primary action
+        val hero = card().apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(20), dp(24), dp(20), dp(22))
         }
-        hero.addView(plasmaCoreView)
-
-        val actionRow = row()
-        connectButton = glassButton("اتصال امن  ⏻", true).apply {
+        plasmaCoreView = PlasmaCoreView(this).apply { contentDescription = "نمایش وضعیت اتصال" }
+        hero.addView(plasmaCoreView, LinearLayout.LayoutParams(dp(210), dp(210)).apply { gravity = Gravity.CENTER_HORIZONTAL })
+        statusView = label("در حال بررسی وضعیت…", 18f, WHITE, true).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, dp(12), 0, dp(4))
+        }
+        hero.addView(statusView, LinearLayout.LayoutParams(-1, -2))
+        profileView = label("هنوز پروفایلی انتخاب نشده", 12f, MUTED, false).apply { gravity = Gravity.CENTER }
+        hero.addView(profileView, LinearLayout.LayoutParams(-1, -2))
+        connectButton = glassButton("اتصال امن", true).apply {
+            textSize = 16f
             isEnabled = false
             setOnClickListener { requestVpnConsentAndConnect() }
         }
+        hero.addView(connectButton, LinearLayout.LayoutParams(-1, dp(56)).apply { topMargin = dp(20) })
         disconnectButton = glassButton("قطع اتصال", false).apply {
+            textSize = 16f
             visibility = View.GONE
             setOnClickListener { disconnectTunnel() }
         }
-        actionRow.addView(connectButton, LinearLayout.LayoutParams(0, dp(54), 1f).apply { marginEnd = dp(8) })
-        actionRow.addView(disconnectButton, LinearLayout.LayoutParams(0, dp(54), 1f))
-        hero.addView(actionRow)
-        profileView = label("هنوز پروفایلی انتخاب نشده", 12f, MUTED, false).apply { setPadding(0, dp(12), 0, 0) }
-        hero.addView(profileView)
+        hero.addView(disconnectButton, LinearLayout.LayoutParams(-1, dp(56)).apply { topMargin = dp(20) })
         page.addView(hero, sectionParams())
 
-        val networkCard = card()
-        networkCard.addView(label("هوشمندی شبکه", 17f, AQUA, true))
-        networkView = label("در انتظار اطلاعات شبکه سیستم‌عامل…", 14f, WHITE, false).apply { setPadding(0, dp(10), 0, 0) }
-        networkCard.addView(networkView)
-        networkCard.addView(label("IP عمومی، کشور سرور، پینگ و سرعت واقعی تا زمان اتصال به منبع معتبر نمایش داده نمی‌شوند.", 12f, MUTED, false))
-        page.addView(networkCard, sectionParams())
+        // Network: 2x2 stat grid
+        page.addView(sectionTitle("وضعیت شبکه"), sectionTitleParams())
+        val gridTop = row()
+        val gridBottom = row()
+        netStatusValue = statTile(gridTop, "اینترنت", first = true)
+        netTransportValue = statTile(gridTop, "نوع اتصال", first = false)
+        netMeteredValue = statTile(gridBottom, "هزینه داده", first = true)
+        netBandwidthValue = statTile(gridBottom, "پهنای باند سیستم", first = false)
+        page.addView(gridTop, LinearLayout.LayoutParams(-1, -2))
+        page.addView(gridBottom, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+        networkView = label("", 12f, MUTED, false).apply { visibility = View.GONE }
+        page.addView(networkView)
+        page.addView(label("IP عمومی، کشور سرور، پینگ و سرعت تا اتصال به منبع معتبر نمایش داده نمیشوند.", 11f, MUTED, false).apply {
+            setPadding(dp(4), dp(10), dp(4), 0)
+        })
 
+        // Engine
+        page.addView(sectionTitle("موتور اتصال"), sectionTitleParams())
         val engineCard = card()
-        engineCard.addView(label("موتورهای VPN", 17f, AQUA, true))
-        engineCard.addView(label("فقط موتورهای پیاده‌سازی و آزمایش‌شده قابل انتخاب هستند.", 12f, MUTED, false))
-        engineCard.addView(engineRow("WireGuard", "پیاده‌سازی شده • نیازمند تست دستگاه", true, wireGuard = true))
-        engineCard.addView(engineRow("AmneziaWG", "هنوز پیاده‌سازی نشده", false))
-        engineCard.addView(engineRow("V2Ray / Xray", "هنوز پیاده‌سازی نشده", false))
-        engineCard.addView(engineRow("Psiphon", "هنوز پیاده‌سازی نشده", false))
-        engineCard.addView(engineRow("Tor", "هنوز پیاده‌سازی نشده", false))
-        engineCard.addView(engineRow("MASQUE / WARP", "هنوز پیاده‌سازی نشده", false))
-        page.addView(engineCard, sectionParams())
+        engineCard.addView(engineRow("WireGuard", "آماده", true, wireGuard = true))
+        engineCard.addView(label("بهزودی: AmneziaWG • V2Ray/Xray • Psiphon • Tor • MASQUE/WARP", 12f, MUTED, false).apply {
+            setPadding(dp(4), dp(12), dp(4), 0)
+        })
+        page.addView(engineCard, LinearLayout.LayoutParams(-1, -2))
 
+        // Profile + network policy segmented control
+        page.addView(sectionTitle("پروفایل و سیاست شبکه"), sectionTitleParams())
         val profileCard = card()
-        profileCard.addView(label("پروفایل و تنظیمات اتصال", 17f, AQUA, true))
         profileImportButton = glassButton("＋  وارد کردن پروفایل WireGuard", false)
         profileImportButton.setOnClickListener {
             if (molidoApp.vpnSessions.snapshot().state != SessionState.IDLE) {
-                Toast.makeText(this, "ابتدا نشست VPN را به‌طور کامل قطع کنید.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "ابتدا نشست VPN را بهطور کامل قطع کنید.", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -194,48 +227,86 @@ class MainActivity : ComponentActivity() {
             }
             profilePicker.launch(intent)
         }
-        profileCard.addView(profileImportButton, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(12) })
-        policyView = label("سیاست شبکه: هر شبکه معتبر", 13f, WHITE, true).apply { setPadding(0, dp(14), 0, dp(8)) }
+        profileCard.addView(profileImportButton, LinearLayout.LayoutParams(-1, dp(50)))
+        policyView = label("سیاست شبکه: هر شبکه معتبر", 13f, WHITE, true).apply { setPadding(dp(2), dp(16), dp(2), dp(10)) }
         profileCard.addView(policyView)
-        val policies = row()
-        policies.addView(smallPolicy("همه", NetworkPolicy.ANY_VALIDATED), LinearLayout.LayoutParams(0, dp(42), 1f))
-        policies.addView(smallPolicy("بدون‌هزینه", NetworkPolicy.UNMETERED_ONLY), LinearLayout.LayoutParams(0, dp(42), 1f).apply { marginStart = dp(5) })
-        policies.addView(smallPolicy("فقط Wi‑Fi", NetworkPolicy.WIFI_ONLY), LinearLayout.LayoutParams(0, dp(42), 1f).apply { marginStart = dp(5) })
-        profileCard.addView(policies)
-        page.addView(profileCard, sectionParams())
+        // Network mode dropdown
+        val policyOrder = listOf(NetworkPolicy.ANY_VALIDATED, NetworkPolicy.UNMETERED_ONLY, NetworkPolicy.WIFI_ONLY)
+        policySpinner = dropdown(
+            listOf("همه شبکهها", "فقط شبکه بدون هزینه", "فقط Wi‑Fi"),
+            policyOrder.indexOf(molidoAppPolicy()).coerceAtLeast(0)
+        ) { index ->
+            val policy = policyOrder[index]
+            if (policy != molidoAppPolicy() && !molidoApp.setNetworkPolicy(policy)) {
+                Toast.makeText(this, "ذخیره سیاست شبکه ناموفق بود؛ تنظیم قبلی حفظ شد.", Toast.LENGTH_SHORT).show()
+            }
+            renderState()
+        }
+        profileCard.addView(policySpinner, LinearLayout.LayoutParams(-1, dp(48)))
 
+        // Country dropdown
+        profileCard.addView(label("کشور سرور", 13f, WHITE, true).apply { setPadding(dp(2), dp(16), dp(2), dp(10)) })
+        val prefs = getSharedPreferences("molido_ui", MODE_PRIVATE)
+        val savedCountry = prefs.getInt("country_index", 0).coerceIn(0, COUNTRIES.lastIndex)
+        countrySpinner = dropdown(COUNTRIES, savedCountry) { index ->
+            prefs.edit().putInt("country_index", index).apply()
+        }
+        profileCard.addView(countrySpinner, LinearLayout.LayoutParams(-1, dp(48)))
+        profileCard.addView(label("با پروفایل WireGuard، کشور را خود پروفایل تعیین میکند. این انتخاب برای موتورهای دارای فهرست سرور اعمال میشود.", 11f, MUTED, false).apply {
+            setPadding(dp(2), dp(8), dp(2), 0)
+        })
+        page.addView(profileCard, LinearLayout.LayoutParams(-1, -2))
+
+        // Security & recovery
+        page.addView(sectionTitle("امنیت و بازیابی"), sectionTitleParams())
         val recoveryCard = card()
-        recoveryCard.addView(label("بازیابی و امنیت", 17f, AQUA, true))
-        recoveryCard.addView(label("مالکیت TUN یکتا • کلیدهای اعتماد در Android Keystore • بازیابی پروفایل فقط با اقدام دستی", 13f, MUTED, false))
-        val restoreProfileButton = glassButton("بازیابی دستی پروفایل رمزگذاری‌شده", false).apply {
-            isEnabled = true
+        recoveryCard.addView(label("کلیدها در Android Keystore • مالکیت یکتای TUN • بازیابی فقط با اقدام دستی شما", 12f, MUTED, false))
+        val restoreProfileButton = glassButton("بازیابی پروفایل رمزگذاریشده", false).apply {
             setOnClickListener { restoreSecureProfile() }
         }
-        recoveryCard.addView(restoreProfileButton, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(12) })
-        recoveryButton = glassButton("پاک‌سازی امن نشست ناموفق", false).apply {
+        recoveryCard.addView(restoreProfileButton, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(14) })
+        recoveryButton = glassButton("پاکسازی امن نشست ناموفق", false).apply {
+            setTextColor(AMBER)
             visibility = View.GONE
             setOnClickListener { prepareRecovery() }
         }
-        recoveryCard.addView(recoveryButton, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(12) })
-        val revokeProfileButton = glassButton("لغو رضایت و حذف پروفایل ذخیره‌شده", false).apply {
+        recoveryCard.addView(recoveryButton, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(8) })
+        val revokeProfileButton = glassButton("حذف پروفایل ذخیرهشده", false).apply {
+            setTextColor(DANGER)
             setOnClickListener { revokeSecureProfileStorage() }
         }
-        recoveryCard.addView(revokeProfileButton, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(8) })
-        page.addView(recoveryCard, sectionParams())
+        recoveryCard.addView(revokeProfileButton, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(8) })
+        page.addView(recoveryCard, LinearLayout.LayoutParams(-1, -2))
 
-        val footer = label("خانه     •     سرورها     •     تنظیمات     •     پشتیبانی", 13f, MUTED, true).apply {
+        val appVersion = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: ""
+        page.addView(label("MolidoVPN $appVersion • همه دادهها فقط روی همین دستگاه", 11f, MUTED, false).apply {
             gravity = Gravity.CENTER
-            setPadding(0, dp(18), 0, dp(12))
+            setPadding(0, dp(22), 0, 0)
+        }, LinearLayout.LayoutParams(-1, -2))
+        setContentView(root)
+    }
+
+    private fun sectionTitle(value: String) = label(value, 15f, WHITE, true).apply { setPadding(dp(4), 0, dp(4), 0) }
+    private fun sectionTitleParams() = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(24); bottomMargin = dp(10) }
+
+    private fun statTile(parent: LinearLayout, caption: String, first: Boolean): TextView {
+        val tile = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = rounded(SURFACE, STROKE, 18f)
         }
-        page.addView(footer)
-        setContentView(scroll)
+        tile.addView(label(caption, 11f, MUTED, false))
+        val value = label("نامشخص", 15f, WHITE, true).apply { setPadding(0, dp(6), 0, 0) }
+        tile.addView(value)
+        parent.addView(tile, LinearLayout.LayoutParams(0, -2, 1f).apply { if (!first) marginStart = dp(10) })
+        return value
     }
 
     private fun engineRow(name: String, state: String, available: Boolean, wireGuard: Boolean = false): View {
         val line = row().apply {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(10), dp(10), dp(10), dp(10))
-            background = rounded(if (available) Color.rgb(18, 66, 69) else Color.rgb(13, 34, 44), if (available) AQUA else STROKE, 16f)
+            background = rounded(if (available) 0xFFEEF2FF.toInt() else SURFACE, if (available) AQUA else STROKE, 16f)
         }
         val titleColumn = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         titleColumn.addView(label(name, 14f, if (available) WHITE else MUTED, true))
@@ -246,6 +317,36 @@ class MainActivity : ComponentActivity() {
         line.addView(label(if (available) "●" else "○", 18f, if (available) AQUA else MUTED, true))
         val params = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) }
         return line.apply { isEnabled = available; alpha = if (available) 1f else .78f }.also { it.layoutParams = params }
+    }
+
+    private fun dropdown(items: List<String>, selected: Int, onSelect: (Int) -> Unit): Spinner {
+        val adapter = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, items) {
+            private fun style(v: View): View = v.apply {
+                (this as? TextView)?.apply {
+                    setTextColor(WHITE)
+                    textSize = 14f
+                    setPadding(dp(14), dp(12), dp(14), dp(12))
+                    textDirection = View.TEXT_DIRECTION_RTL
+                }
+            }
+            override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup) =
+                style(super.getView(position, convertView, parent))
+            override fun getDropDownView(position: Int, convertView: View?, parent: android.view.ViewGroup) =
+                style(super.getDropDownView(position, convertView, parent)).apply { setBackgroundColor(SURFACE_2) }
+        }.apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+        return Spinner(this, Spinner.MODE_DROPDOWN).apply {
+            this.adapter = adapter
+            background = rounded(SURFACE_2, STROKE, 14f)
+            setPopupBackgroundDrawable(rounded(SURFACE_2, STROKE, 14f))
+            setSelection(selected, false)
+            var current = selected
+            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(p: AdapterView<*>?, v: View?, position: Int, id: Long) {
+                    if (position != current) { current = position; onSelect(position) }
+                }
+                override fun onNothingSelected(p: AdapterView<*>?) = Unit
+            }
+        }
     }
 
     private fun smallPolicy(text: String, policy: NetworkPolicy): Button =
@@ -267,13 +368,13 @@ class MainActivity : ComponentActivity() {
             val active = policy == selected
             button.background = GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
-                if (active) intArrayOf(Color.rgb(86, 230, 208), Color.rgb(27, 169, 177), Color.rgb(20, 112, 129))
-                else intArrayOf(Color.rgb(28, 75, 88), Color.rgb(12, 43, 57))
+                if (active) intArrayOf(AQUA, AQUA)
+                else intArrayOf(Color.TRANSPARENT, Color.TRANSPARENT)
             ).apply {
-                cornerRadius = dp(18).toFloat()
-                setStroke(dp(1), if (active) AQUA else STROKE)
+                cornerRadius = dp(12).toFloat()
             }
-            button.setTextColor(if (active) Color.rgb(3, 31, 39) else WHITE)
+            button.elevation = 0f
+            button.setTextColor(if (active) Color.WHITE else WHITE)
             button.isSelected = active
             button.contentDescription = button.text.toString() + ", " + (if (active) "انتخاب‌شده" else "انتخاب‌نشده")
         }
@@ -480,12 +581,39 @@ class MainActivity : ComponentActivity() {
         disconnectButton.isEnabled = !controlsBusy && snapshot.state != SessionState.IDLE
         profileImportButton.isEnabled = !controlsBusy && snapshot.state == SessionState.IDLE
         policyButtons.values.forEach { it.isEnabled = !controlsBusy && snapshot.state == SessionState.IDLE }
+        if (::policySpinner.isInitialized) policySpinner.isEnabled = !controlsBusy && snapshot.state == SessionState.IDLE
+        if (::countrySpinner.isInitialized) countrySpinner.isEnabled = !controlsBusy && snapshot.state == SessionState.IDLE
         policyView.text = "سیاست شبکه: " + when (activePolicy) {
             NetworkPolicy.ANY_VALIDATED -> "هر شبکه معتبر"
             NetworkPolicy.UNMETERED_ONLY -> "فقط شبکه بدون هزینه"
             NetworkPolicy.WIFI_ONLY -> "فقط Wi‑Fi"
         }
         refreshPolicyButtonStyles(activePolicy)
+        connectButton.visibility = if (snapshot.state == SessionState.IDLE) View.VISIBLE else View.GONE
+        if (::netStatusValue.isInitialized) {
+            netStatusValue.text = when (network.status) {
+                NetworkAssessmentStatus.VALIDATED -> "تأیید شده"
+                NetworkAssessmentStatus.NOT_VALIDATED -> "تأیید نشده"
+                NetworkAssessmentStatus.STALE -> "قدیمی"
+                NetworkAssessmentStatus.UNKNOWN -> "نامشخص"
+            }
+            netStatusValue.setTextColor(if (network.status == NetworkAssessmentStatus.VALIDATED) EMERALD else AMBER)
+            netTransportValue.text = network.transport?.name ?: "نامشخص"
+            netMeteredValue.text = when (network.metered) { true -> "دارای هزینه"; false -> "بدون هزینه"; null -> "نامشخص" }
+            netBandwidthValue.text = network.downstreamKbps?.let { "↓ ${it / 1000} Mbps" } ?: "نامشخص"
+        }
+        if (::statusChip.isInitialized) {
+            val (chipText, chipColor) = when (snapshot.state) {
+                SessionState.IDLE -> "●  قطع" to MUTED
+                SessionState.RESERVED -> "◌  اتصال…" to AQUA
+                SessionState.RUNNING -> "●  فعال" to EMERALD
+                SessionState.STOPPING -> "◌  توقف…" to AMBER
+                SessionState.FAILED -> "!  خطا" to DANGER
+            }
+            statusChip.text = chipText
+            statusChip.setTextColor(chipColor)
+            statusChip.background = rounded(SURFACE, chipColor, 30f)
+        }
         if (::plasmaCoreView.isInitialized) {
             plasmaCoreView.setSessionState(snapshot.state)
         }
@@ -500,8 +628,8 @@ class MainActivity : ComponentActivity() {
     private fun card() = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(18), dp(18), dp(18), dp(18))
-        background = rounded(Color.rgb(13, 39, 51), STROKE, 24f)
-        elevation = dp(8).toFloat()
+        background = rounded(SURFACE, STROKE, 24f)
+        elevation = 0f
     }
 
     private fun row() = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -512,16 +640,16 @@ class MainActivity : ComponentActivity() {
     }
     private fun pill(value: String, color: Int) = TextView(this).apply {
         text = value; textSize = 11f; setTextColor(color); gravity = Gravity.CENTER
-        setPadding(dp(12), dp(8), dp(12), dp(8)); background = rounded(Color.rgb(17, 54, 63), color, 30f)
+        setPadding(dp(12), dp(8), dp(12), dp(8)); background = rounded(SURFACE_2, STROKE, 30f)
     }
     private fun glassButton(value: String, primary: Boolean) = Button(this).apply {
-        text = value; textSize = 14f; isAllCaps = false; setTextColor(if (primary) Color.rgb(3, 31, 39) else WHITE)
+        text = value; textSize = 14f; isAllCaps = false; setTextColor(if (primary) Color.WHITE else WHITE)
         background = GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,
-            if (primary) intArrayOf(Color.rgb(86, 230, 208), Color.rgb(27, 169, 177), Color.rgb(20, 112, 129))
-            else intArrayOf(Color.rgb(28, 75, 88), Color.rgb(12, 43, 57))
-        ).apply { cornerRadius = dp(18).toFloat(); setStroke(dp(1), if (primary) AQUA else STROKE) }
-        elevation = dp(5).toFloat()
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            if (primary) intArrayOf(PINK, AQUA, CYAN)
+            else intArrayOf(SURFACE_2, SURFACE)
+        ).apply { cornerRadius = dp(18).toFloat(); setStroke(dp(1), STROKE) }
+        elevation = if (primary) dp(6).toFloat() else 0f
         stateListAnimator = null
     }
     private fun rounded(fill: Int, stroke: Int, radius: Float) = GradientDrawable().apply {
@@ -533,10 +661,21 @@ class MainActivity : ComponentActivity() {
 
     private companion object {
         const val MAX_PROFILE_BYTES = 64 * 1024
-        const val AQUA = 0xFF39C7B7.toInt()
-        const val STROKE = 0xFF246E70.toInt()
-        const val GOLD = 0xFFE2C56C.toInt()
-        const val WHITE = 0xFFEAF5F7.toInt()
-        const val MUTED = 0xFF8DA9B2.toInt()
+        // Liquid Glass palette (light). WHITE = primary text colour, name kept for minimal churn.
+        const val AQUA = 0xFF6366F1.toInt()
+        const val PINK = 0xFFF472B6.toInt()
+        const val CYAN = 0xFF22D3EE.toInt()
+        const val STROKE = 0xFFFFFFFF.toInt()
+        const val GOLD = 0xFFF59E0B.toInt()
+        const val WHITE = 0xFF1E1B4B.toInt()
+        const val MUTED = 0xFF6B7280.toInt()
+        const val BG = 0xFFFDF2F8.toInt()
+        const val BG_MID = 0xFFE0E7FF.toInt()
+        const val BG_END = 0xFFCFFAFE.toInt()
+        const val SURFACE = 0x99FFFFFF.toInt()
+        const val SURFACE_2 = 0xCCFFFFFF.toInt()
+        const val EMERALD = 0xFF059669.toInt()
+        const val AMBER = 0xFFD97706.toInt()
+        const val DANGER = 0xFFDC2626.toInt()
     }
 }

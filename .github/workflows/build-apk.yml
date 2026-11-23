@@ -10,11 +10,18 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-apk:
-    name: Build MolidoVPN Android APK
+    name: Test, build and publish MolidoVPN APK
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
+    env:
+      MOLIDO_VERSION_CODE: ${{ github.run_number }}
+      MOLIDO_VERSION_NAME: 1.1.${{ github.run_number }}
 
     steps:
       - name: Checkout Repository
@@ -31,14 +38,55 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Compile Android Debug APK
+      - name: Unit tests and lint
+        run: gradle --no-daemon :android:app:testDebugUnitTest :android:app:lintDebug
+
+      - name: Build APK (signed release if secrets exist, else debug)
+        shell: bash
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KS_KEYPASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          gradle --no-daemon :android:app:assembleDebug
-          cp android/app/build/outputs/apk/debug/app-debug.apk MolidoVPN-v1.0.0.apk
+          set -euo pipefail
+          OUT="MolidoVPN-v${MOLIDO_VERSION_NAME}.apk"
+          if [ -n "${KS_B64:-}" ]; then
+            KEYSTORE_PATH="$RUNNER_TEMP/molido-release.p12"
+            printf '%s' "$KS_B64" | base64 --decode > "$KEYSTORE_PATH"
+            chmod 600 "$KEYSTORE_PATH"
+            export ANDROID_KEYSTORE_FILE="$KEYSTORE_PATH"
+            export ANDROID_KEY_ALIAS="$KS_ALIAS"
+            printf -v ANDROID_KEYSTORE_PASSWORD '%s' "$KS_PASS"; export ANDROID_KEYSTORE_PASSWORD
+            printf -v ANDROID_KEY_PASSWORD '%s' "$KS_KEYPASS"; export ANDROID_KEY_PASSWORD
+            gradle --no-daemon :android:app:assembleRelease
+            cp android/app/build/outputs/apk/release/app-release.apk "$OUT"
+            echo "SIGNED=true" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Release keystore secrets missing - publishing a DEBUG pre-release (in-app auto-update will reject it)."
+            gradle --no-daemon :android:app:assembleDebug
+            cp android/app/build/outputs/apk/debug/app-debug.apk "$OUT"
+            echo "SIGNED=false" >> "$GITHUB_ENV"
+          fi
+          sha256sum "$OUT" > "$OUT.sha256"
+          echo "APK=$OUT" >> "$GITHUB_ENV"
 
       - name: Upload APK as Build Artifact
         uses: actions/upload-artifact@v4
         with:
           name: MolidoVPN-Android-APK
-          path: MolidoVPN-v1.0.0.apk
+          path: |
+            ${{ env.APK }}
+            ${{ env.APK }}.sha256
           retention-days: 30
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.MOLIDO_VERSION_NAME }}
+          name: MolidoVPN v${{ env.MOLIDO_VERSION_NAME }}
+          prerelease: ${{ env.SIGNED != 'true' }}
+          generate_release_notes: true
+          files: |
+            ${{ env.APK }}
+            ${{ env.APK }}.sha256
