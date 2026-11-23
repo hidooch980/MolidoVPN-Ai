@@ -29,6 +29,10 @@ import ai.molido.vpn.core.NetworkPolicy
 import ai.molido.vpn.core.RecoveryAction
 import ai.molido.vpn.core.SessionState
 import ai.molido.vpn.core.UpdateCheckOutcome
+import ai.molido.vpn.core.ConnectionMode
+import ai.molido.vpn.core.CountryBucket
+import ai.molido.vpn.core.CountryIndex
+import ai.molido.vpn.engine.singbox.ShareLinkParser
 import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
 
@@ -51,10 +55,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var netBandwidthValue: TextView
     private lateinit var policySpinner: Spinner
     private lateinit var countrySpinner: Spinner
-    private val COUNTRIES = listOf(
-        "🌐 خودکار (بهترین سرور)", "🇩🇪 آلمان", "🇳🇱 هلند", "🇫🇮 فنلاند", "🇫🇷 فرانسه", "🇬🇧 انگلستان",
-        "🇸🇪 سوئد", "🇨🇭 سوئیس", "🇹🇷 ترکیه", "🇦🇪 امارات", "🇺🇸 آمریکا", "🇨🇦 کانادا", "🇯🇵 ژاپن", "🇸🇬 سنگاپور"
-    )
+    private lateinit var modeSpinner: Spinner
+    private var countryBuckets: List<CountryBucket> = emptyList()
     private var controlsBusy = false
     private val policyButtons = mutableMapOf<NetworkPolicy, Button>()
     private var profileText: String? = null
@@ -85,13 +87,13 @@ class MainActivity : ComponentActivity() {
                 } ?: error("Unable to read profile")
                 require(!profileText.isNullOrBlank()) { "Empty profile" }
                 profileView.text = "پروفایل WireGuard بارگذاری شد • فقط در حافظه"
-                connectButton.isEnabled = true
+                renderState()
                 statusView.text = "پروفایل آماده است؛ برای شروع، مجوز VPN اندروید لازم است."
                 offerSecureProfileStorage()
             } catch (_: Exception) {
                 profileText = null
                 profileView.text = "هنوز پروفایلی انتخاب نشده"
-                connectButton.isEnabled = false
+                renderState()
                 statusView.text = "خواندن پروفایل ناموفق بود. فایل متنی معتبر تا ۶۴ کیلوبایت انتخاب کنید."
             }
         }
@@ -175,7 +177,6 @@ class MainActivity : ComponentActivity() {
         hero.addView(profileView, LinearLayout.LayoutParams(-1, -2))
         connectButton = glassButton("اتصال امن", true).apply {
             textSize = 16f
-            isEnabled = false
             setOnClickListener { requestVpnConsentAndConnect() }
         }
         hero.addView(connectButton, LinearLayout.LayoutParams(-1, dp(56)).apply { topMargin = dp(20) })
@@ -245,14 +246,30 @@ class MainActivity : ComponentActivity() {
         }
         profileCard.addView(policySpinner, LinearLayout.LayoutParams(-1, dp(48)))
 
-        // Country dropdown
-        profileCard.addView(label("کشور سرور", 13f, WHITE, true).apply { setPadding(dp(2), dp(16), dp(2), dp(10)) })
         val prefs = getSharedPreferences("molido_ui", MODE_PRIVATE)
-        val savedCountry = prefs.getInt("country_index", 0).coerceIn(0, COUNTRIES.lastIndex)
-        countrySpinner = dropdown(COUNTRIES, savedCountry) { index ->
-            prefs.edit().putInt("country_index", index).apply()
+
+        // Connection mode dropdown
+        profileCard.addView(label("حالت اتصال", 13f, WHITE, true).apply { setPadding(dp(2), dp(16), dp(2), dp(10)) })
+        val modes = ConnectionMode.entries
+        val savedMode = ConnectionMode.fromId(prefs.getString("connection_mode", null))
+        modeSpinner = dropdown(modes.map { it.label }, modes.indexOf(savedMode)) { index ->
+            val mode = modes[index]
+            prefs.edit().putString("connection_mode", mode.id).apply()
+            if (!mode.available) {
+                Toast.makeText(this, "«${mode.title}» هنوز در این نسخه فعال نیست؛ اتصال با حالت خودکار انجام میشود.", Toast.LENGTH_SHORT).show()
+            }
+        }
+        profileCard.addView(modeSpinner, LinearLayout.LayoutParams(-1, dp(48)))
+
+        // Exit location dropdown with config count per country
+        profileCard.addView(label("مکان خروجی", 13f, WHITE, true).apply { setPadding(dp(2), dp(16), dp(2), dp(10)) })
+        countrySpinner = dropdown(listOf("🌐 خودکار"), 0) { index ->
+            val bucket = countryBuckets.getOrNull(index - 1)
+            if (bucket != null) prefs.edit().putString("country_code", bucket.code).apply()
+            else prefs.edit().remove("country_code").apply()
         }
         profileCard.addView(countrySpinner, LinearLayout.LayoutParams(-1, dp(48)))
+        refreshCountries()
         profileCard.addView(label("با پروفایل WireGuard، کشور را خود پروفایل تعیین میکند. این انتخاب برای موتورهای دارای فهرست سرور اعمال میشود.", 11f, MUTED, false).apply {
             setPadding(dp(2), dp(8), dp(2), 0)
         })
@@ -344,6 +361,34 @@ class MainActivity : ComponentActivity() {
         line.addView(label(if (available) "●" else "○", 18f, if (available) AQUA else MUTED, true))
         val params = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) }
         return line.apply { isEnabled = available; alpha = if (available) 1f else .78f }.also { it.layoutParams = params }
+    }
+
+    private var countedProfileHash: Int? = null
+
+    /** Rebuilds the exit-location list from the loaded profile; skips work when the profile is unchanged. */
+    private fun refreshCountries() {
+        if (!::countrySpinner.isInitialized) return
+        val text = profileText.orEmpty()
+        val hash = text.hashCode()
+        if (hash == countedProfileHash) return
+        countedProfileHash = hash
+        val names = when {
+            text.isBlank() -> emptyList()
+            text.contains("://") || !text.contains("[Interface]") ->
+                ShareLinkParser.parseSubscription(text).map { it.name }
+            // A WireGuard file is one config; its country can only come from a comment line.
+            else -> listOf(text.lineSequence().firstOrNull { it.trim().startsWith("#") }.orEmpty())
+        }
+        countryBuckets = CountryIndex.group(names)
+        @Suppress("UNCHECKED_CAST")
+        val adapter = countrySpinner.adapter as ArrayAdapter<String>
+        adapter.clear()
+        adapter.add("🌐 خودکار (${names.size} کانفیگ)")
+        adapter.addAll(countryBuckets.map { it.label })
+        adapter.notifyDataSetChanged()
+        val savedCode = getSharedPreferences("molido_ui", MODE_PRIVATE).getString("country_code", null)
+        val index = countryBuckets.indexOfFirst { it.code == savedCode }
+        countrySpinner.setSelection(if (index >= 0) index + 1 else 0, false)
     }
 
     private fun dropdown(items: List<String>, selected: Int, onSelect: (Int) -> Unit): Spinner {
@@ -470,7 +515,7 @@ class MainActivity : ComponentActivity() {
                     molidoApp.secureProfileStore.revokeConsentAndDelete()
                     profileText = null
                     profileView.text = "پروفایل ذخیره‌شده حذف شد"
-                    connectButton.isEnabled = false
+                    renderState()
                     Toast.makeText(this, "رضایت لغو شد؛ داده رمزگذاری‌شده، کلید اختصاصی و نسخه فعال در حافظه حذف شدند.", Toast.LENGTH_LONG).show()
                     renderState()
                 } catch (_: Exception) {
@@ -502,7 +547,7 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) {
             profileText = null
             profileView.text = "بازیابی پروفایل ذخیره‌شده ناموفق بود"
-            connectButton.isEnabled = false
+            renderState()
             Toast.makeText(this, "کلید یا داده رمزگذاری‌شده در دسترس نیست؛ اتصال آغاز نشد.", Toast.LENGTH_LONG).show()
         } finally {
             bytes?.fill(0)
@@ -572,6 +617,8 @@ class MainActivity : ComponentActivity() {
 
     private fun renderState(message: String? = null) {
         val snapshot = molidoApp.vpnSessions.snapshot()
+        refreshCountries()
+        if (::modeSpinner.isInitialized) modeSpinner.isEnabled = !controlsBusy && snapshot.state == SessionState.IDLE
         val network = molidoApp.latestNetworkAssessment()
         val activePolicy = molidoApp.currentNetworkPolicy()
         val pathDecision = AdaptivePathPolicyCore.evaluate(network, activePolicy)
@@ -603,8 +650,9 @@ class MainActivity : ComponentActivity() {
         }
         disconnectButton.visibility = if (snapshot.state == SessionState.IDLE) View.GONE else View.VISIBLE
         recoveryButton.visibility = if (snapshot.state == SessionState.FAILED) View.VISIBLE else View.GONE
-        connectButton.isEnabled = !controlsBusy && !profileText.isNullOrBlank() && snapshot.state == SessionState.IDLE &&
-            pathDecision.decision == PathDecision.ALLOW
+        // Stay tappable while idle: requestVpnConsentAndConnect() explains a missing profile or a blocked network.
+        connectButton.isEnabled = !controlsBusy && snapshot.state == SessionState.IDLE
+        connectButton.alpha = if (!profileText.isNullOrBlank() && pathDecision.decision == PathDecision.ALLOW) 1f else 0.6f
         disconnectButton.isEnabled = !controlsBusy && snapshot.state != SessionState.IDLE
         profileImportButton.isEnabled = !controlsBusy && snapshot.state == SessionState.IDLE
         policyButtons.values.forEach { it.isEnabled = !controlsBusy && snapshot.state == SessionState.IDLE }
