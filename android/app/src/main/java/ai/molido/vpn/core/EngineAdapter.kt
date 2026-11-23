@@ -32,3 +32,9 @@ interface EngineFailureAwareAdapter {
     /** Listener must report unexpected engine failure only; intentional stop transitions are excluded. */
     fun setFailureListener(listener: (() -> Unit)?)
 }
+
+/** Optional session contract: lets callers verify the peer actually answered. */
+interface HandshakeProbe {
+    /** Blocks up to [timeoutMillis]; true once any peer completed a handshake. Never holds locks while waiting. */
+    fun awaitHandshake(timeoutMillis: Long): Boolean
+}

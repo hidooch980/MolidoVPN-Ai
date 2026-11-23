@@ -604,8 +604,18 @@ class MainActivity : ComponentActivity() {
                     null
                 }
                 if (started == true) {
-                    runOnUiThread { setControlsEnabled(true); renderState() }
-                    return@execute
+                    val probe = sessions.activeHandshakeProbe()
+                    if (probe != null) runOnUiThread { statusView.text = "در انتظار handshake سرور (${index + 1} از ${candidates.size})…" }
+                    val answered = probe?.awaitHandshake(HANDSHAKE_TIMEOUT_MS) ?: true
+                    if (answered || isLast) {
+                        runOnUiThread {
+                            setControlsEnabled(true)
+                            renderState()
+                            if (!answered) statusView.text = "تونل بالا است ولی هیچ سروری handshake را پاسخ نداد."
+                        }
+                        return@execute
+                    }
+                    // Tunnel is up but the peer never answered: tear it down and try the next config.
                 }
                 // false + IDLE = blocked by network policy: another config would be blocked too.
                 val blocked = started == false && sessions.snapshot().state == SessionState.IDLE
@@ -780,6 +790,7 @@ class MainActivity : ComponentActivity() {
         // Must match AndroidSecureProfileStore.MAX_PROFILE_BYTES so a loaded bundle can be saved.
         const val MAX_PROFILE_BYTES = 64 * 1024
         const val MAX_FAILOVER_ATTEMPTS = 5
+        const val HANDSHAKE_TIMEOUT_MS = 8_000L
         // Liquid Glass palette (light). WHITE = primary text colour, name kept for minimal churn.
         const val AQUA = 0xFF6366F1.toInt()
         const val PINK = 0xFFF472B6.toInt()

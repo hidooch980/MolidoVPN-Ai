@@ -148,6 +148,9 @@ class VpnSessionController(
     @Synchronized fun snapshot(): SessionSnapshot = supervisor.snapshot()
     @Synchronized fun latestPathDecision(): AdaptivePathDecision? = lastPathDecision
 
+    /** The running session's handshake probe, if its engine supports one. Wait on it outside this lock. */
+    @Synchronized fun activeHandshakeProbe(): HandshakeProbe? = activeSession as? HandshakeProbe
+
     /** Engine adapters/lifecycle observers call this when the active tunnel fails. */
     @Synchronized
     fun reportActiveEngineFailure(): Boolean {

@@ -9,6 +9,7 @@ import ai.molido.vpn.core.EngineSession
 import ai.molido.vpn.core.EngineSlot
 import ai.molido.vpn.core.EngineStartException
 import ai.molido.vpn.core.EngineFailureAwareAdapter
+import ai.molido.vpn.core.HandshakeProbe
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicBoolean
@@ -56,8 +57,29 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter, EngineFailureAwa
             }
         }
 
-        val session = object : EngineSession {
+        val session = object : EngineSession, HandshakeProbe {
             private var stopped = false
+
+            override fun awaitHandshake(timeoutMillis: Long): Boolean {
+                val deadline = System.currentTimeMillis() + timeoutMillis
+                while (true) {
+                    val handshaken = synchronized(lock) {
+                        if (stopped || activeTunnel !== tunnel) return false
+                        runCatching {
+                            val stats = backend.getStatistics(tunnel)
+                            stats.peers().any { key -> (stats.peer(key)?.latestHandshakeEpochMillis() ?: 0L) > 0L }
+                        }.getOrDefault(false)
+                    }
+                    if (handshaken) return true
+                    if (System.currentTimeMillis() >= deadline) return false
+                    try {
+                        Thread.sleep(HANDSHAKE_POLL_MS)
+                    } catch (_: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        return false
+                    }
+                }
+            }
 
             override fun stop() = synchronized(lock) {
                 if (stopped) return@synchronized
@@ -114,5 +136,6 @@ class WireGuardEngineAdapter(context: Context) : EngineAdapter, EngineFailureAwa
     private companion object {
         const val TUNNEL_NAME = "molido"
         const val MAX_CONFIG_BYTES = 64 * 1024
+        const val HANDSHAKE_POLL_MS = 500L
     }
 }
