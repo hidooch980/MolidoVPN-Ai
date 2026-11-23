@@ -270,7 +270,7 @@ class MainActivity : ComponentActivity() {
         profileCard.addView(label("حالت اتصال", 13f, WHITE, true).apply { setPadding(dp(2), dp(16), dp(2), dp(10)) })
         val modes = ConnectionMode.entries
         val savedMode = ConnectionMode.fromId(prefs.getString("connection_mode", null))
-        modeSpinner = dropdown(modes.map { it.label }, modes.indexOf(savedMode)) { index ->
+        modeSpinner = dropdown(modes.map { it.label }, modes.indexOf(savedMode).coerceAtLeast(0)) { index ->
             val mode = modes[index]
             prefs.edit().putString("connection_mode", mode.id).apply()
             if (!mode.available) {
@@ -410,7 +410,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun dropdown(items: List<String>, selected: Int, onSelect: (Int) -> Unit): Spinner {
-        val adapter = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, items) {
+        val adapter = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, items.toMutableList()) {
             private fun style(v: View): View = v.apply {
                 (this as? TextView)?.apply {
                     setTextColor(WHITE)
