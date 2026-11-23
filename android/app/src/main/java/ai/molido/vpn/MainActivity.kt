@@ -32,6 +32,9 @@ import ai.molido.vpn.core.UpdateCheckOutcome
 import ai.molido.vpn.core.ConnectionMode
 import ai.molido.vpn.core.CountryBucket
 import ai.molido.vpn.core.CountryIndex
+import ai.molido.vpn.core.WireGuardBundle
+import android.net.Uri
+import android.provider.OpenableColumns
 import ai.molido.vpn.engine.singbox.ShareLinkParser
 import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
@@ -70,23 +73,33 @@ class MainActivity : ComponentActivity() {
                 renderState()
                 return@registerForActivityResult
             }
-            val uri = result.data?.data ?: return@registerForActivityResult
+            val data = result.data ?: return@registerForActivityResult
+            val uris = data.clipData?.let { clip -> (0 until clip.itemCount).map { clip.getItemAt(it).uri } }
+                ?: listOfNotNull(data.data)
+            if (uris.isEmpty()) return@registerForActivityResult
             try {
-                profileText = contentResolver.openInputStream(uri)?.use { input ->
-                    val output = ByteArrayOutputStream()
-                    val buffer = ByteArray(4096)
-                    var total = 0
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        total += count
-                        require(total <= MAX_PROFILE_BYTES) { "Profile exceeds size limit" }
-                        output.write(buffer, 0, count)
-                    }
-                    output.toString(StandardCharsets.UTF_8.name())
-                } ?: error("Unable to read profile")
+                var total = 0
+                val files = uris.map { uri ->
+                    val text = contentResolver.openInputStream(uri)?.use { input ->
+                        val output = ByteArrayOutputStream()
+                        val buffer = ByteArray(4096)
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            total += count
+                            require(total <= MAX_PROFILE_BYTES) { "Profile exceeds size limit" }
+                            output.write(buffer, 0, count)
+                        }
+                        output.toString(StandardCharsets.UTF_8.name())
+                    } ?: error("Unable to read profile")
+                    displayName(uri) to text
+                }
+                profileText = if (files.size == 1) files[0].second
+                else WireGuardBundle.join(files.filter { it.second.contains("[Interface]", ignoreCase = true) })
                 require(!profileText.isNullOrBlank()) { "Empty profile" }
-                profileView.text = "پروفایل WireGuard بارگذاری شد • فقط در حافظه"
+                val count = WireGuardBundle.split(profileText.orEmpty()).size
+                profileView.text = if (count > 1) "$count پروفایل WireGuard بارگذاری شد • فقط در حافظه"
+                else "پروفایل WireGuard بارگذاری شد • فقط در حافظه"
                 renderState()
                 statusView.text = "پروفایل آماده است؛ برای شروع، مجوز VPN اندروید لازم است."
                 offerSecureProfileStorage()
@@ -226,6 +239,7 @@ class MainActivity : ComponentActivity() {
                 addCategory(Intent.CATEGORY_OPENABLE)
                 type = "*/*"
                 putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/plain", "application/octet-stream", "application/x-wireguard-config"))
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
             }
             profilePicker.launch(intent)
         }
@@ -376,8 +390,8 @@ class MainActivity : ComponentActivity() {
             text.isBlank() -> emptyList()
             text.contains("://") || !text.contains("[Interface]") ->
                 ShareLinkParser.parseSubscription(text).map { it.name }
-            // A WireGuard file is one config; its country can only come from a comment line.
-            else -> listOf(text.lineSequence().firstOrNull { it.trim().startsWith("#") }.orEmpty())
+            // WireGuard: one entry per [Interface]; country comes from its leading comment or file name.
+            else -> WireGuardBundle.split(text).map { it.name }
         }
         countryBuckets = CountryIndex.group(names)
         @Suppress("UNCHECKED_CAST")
@@ -575,7 +589,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun connectUsingLoadedProfile() {
-        val configuration = profileText ?: return
+        val loaded = profileText ?: return
+        val countryCode = getSharedPreferences("molido_ui", MODE_PRIVATE).getString("country_code", null)
+        val configuration = WireGuardBundle.select(loaded, countryCode)
         setControlsEnabled(false)
         molidoApp.vpnExecutor.execute {
             try {
@@ -731,10 +747,18 @@ class MainActivity : ComponentActivity() {
         setColor(fill); cornerRadius = dp(radius.toInt()).toFloat(); setStroke(dp(1), stroke)
     }
     private fun sectionParams() = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) }
+    private fun displayName(uri: Uri): String =
+        runCatching {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                if (c.moveToFirst()) c.getString(0) else null
+            }
+        }.getOrNull() ?: uri.lastPathSegment.orEmpty().substringAfterLast('/')
+
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
     private fun dp(value: Float): Int = (value * resources.displayMetrics.density).toInt()
 
     private companion object {
+        // Must match AndroidSecureProfileStore.MAX_PROFILE_BYTES so a loaded bundle can be saved.
         const val MAX_PROFILE_BYTES = 64 * 1024
         // Liquid Glass palette (light). WHITE = primary text colour, name kept for minimal churn.
         const val AQUA = 0xFF6366F1.toInt()
