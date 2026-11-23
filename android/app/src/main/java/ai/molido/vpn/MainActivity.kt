@@ -33,6 +33,7 @@ import ai.molido.vpn.core.ConnectionMode
 import ai.molido.vpn.core.CountryBucket
 import ai.molido.vpn.core.CountryIndex
 import ai.molido.vpn.core.WireGuardBundle
+import ai.molido.vpn.core.WarpRegistration
 import android.net.Uri
 import android.provider.OpenableColumns
 import ai.molido.vpn.engine.singbox.ShareLinkParser
@@ -244,6 +245,9 @@ class MainActivity : ComponentActivity() {
             profilePicker.launch(intent)
         }
         profileCard.addView(profileImportButton, LinearLayout.LayoutParams(-1, dp(50)))
+        val warpButton = glassButton("☁  دریافت کانفیگ رایگان Cloudflare WARP", false)
+        warpButton.setOnClickListener { registerWarp(warpButton) }
+        profileCard.addView(warpButton, LinearLayout.LayoutParams(-1, dp(50)).apply { topMargin = dp(8) })
         policyView = label("سیاست شبکه: هر شبکه معتبر", 13f, WHITE, true).apply { setPadding(dp(2), dp(16), dp(2), dp(10)) }
         profileCard.addView(policyView)
         // Network mode dropdown
@@ -776,6 +780,34 @@ class MainActivity : ComponentActivity() {
         setColor(fill); cornerRadius = dp(radius.toInt()).toFloat(); setStroke(dp(1), stroke)
     }
     private fun sectionParams() = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) }
+    private fun registerWarp(button: Button) {
+        if (molidoApp.vpnSessions.snapshot().state != SessionState.IDLE) {
+            Toast.makeText(this, "ابتدا نشست VPN را بهطور کامل قطع کنید.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        button.isEnabled = false
+        statusView.text = "در حال ثبت دستگاه در Cloudflare WARP…"
+        Thread {
+            val config = runCatching { WarpRegistration.register() }.getOrNull()
+            runOnUiThread {
+                button.isEnabled = true
+                if (config == null) {
+                    statusView.text = "ثبت WARP ناموفق بود؛ ممکن است این سرویس در شبکه شما مسدود باشد."
+                    return@runOnUiThread
+                }
+                // Add WARP to any configs already loaded instead of replacing them.
+                val existing = profileText?.takeIf { it.contains("[Interface]", ignoreCase = true) }
+                val merged = if (existing == null) config else existing.trim() + "\n\n" + config
+                profileText = if (merged.toByteArray(StandardCharsets.UTF_8).size <= MAX_PROFILE_BYTES) merged else config
+                val count = WireGuardBundle.split(profileText.orEmpty()).size
+                profileView.text = "$count پروفایل WireGuard (شامل WARP) • فقط در حافظه"
+                renderState()
+                statusView.text = "کانفیگ WARP ساخته شد؛ برای شروع، مجوز VPN اندروید لازم است."
+                offerSecureProfileStorage()
+            }
+        }.start()
+    }
+
     private fun displayName(uri: Uri): String =
         runCatching {
             contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
