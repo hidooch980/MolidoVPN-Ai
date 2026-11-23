@@ -28,6 +28,10 @@ android {
         versionCode = System.getenv("MOLIDO_VERSION_CODE")?.toIntOrNull() ?: 2
         versionName = System.getenv("MOLIDO_VERSION_NAME")?.takeIf { it.isNotBlank() } ?: "1.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Base64 X.509 ECDSA P-256 public key that verifies update-manifest.json. Empty = auto-update off.
+        val updateKey = System.getenv("MOLIDO_UPDATE_PUBLIC_KEY").orEmpty().trim()
+        require(updateKey.all { it.isLetterOrDigit() || it == '+' || it == '/' || it == '=' }) { "Invalid update public key" }
+        buildConfigField("String", "UPDATE_PUBLIC_KEY_B64", "\"$updateKey\"")
     }
 
     signingConfigs {
@@ -52,6 +56,10 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     compileOptions {

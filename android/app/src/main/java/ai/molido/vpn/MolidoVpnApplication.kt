@@ -9,6 +9,7 @@ import ai.molido.vpn.core.AndroidUpdateTrust
 import ai.molido.vpn.core.AndroidUpdateInstaller
 import ai.molido.vpn.core.ControlPlaneClient
 import ai.molido.vpn.core.ControlPlaneFetchResult
+import ai.molido.vpn.core.GitHubUpdateChecker
 import ai.molido.vpn.core.DiagnosticsObservabilityCore
 import ai.molido.vpn.core.NetworkAssessment
 import ai.molido.vpn.core.NetworkIntelligenceCore
@@ -45,6 +46,24 @@ class MolidoVpnApplication : Application() {
     val controlPlaneClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { ControlPlaneClient(trustStore) }
     val updateTrust by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { AndroidUpdateTrust(this, trustStore) }
     val updateInstaller by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { AndroidUpdateInstaller(this, updateTrust) }
+    @Volatile private var updateKeyPinned = false
+    val updateChecker by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        GitHubUpdateChecker(updateTrust, updateInstaller, trustKeyProvisioned = { updateKeyPinned })
+    }
+
+    /** Pins the build-embedded update key once; a different key later is refused by the trust store. */
+    private fun pinUpdateKeyFromBuild() {
+        val encoded = BuildConfig.UPDATE_PUBLIC_KEY_B64
+        if (encoded.isBlank()) return
+        updateKeyPinned = try {
+            trustStore.pinUpdatePublicKey(java.util.Base64.getDecoder().decode(encoded))
+            trustStore.loadUpdatePublicKey()
+            true
+        } catch (_: Exception) {
+            diagnostics.record("UPDATE_KEY_PIN_FAILED", "Update trust key could not be pinned", System.currentTimeMillis())
+            false
+        }
+    }
 
     /** Caller supplies operator-provisioned HTTPS endpoint and ephemeral device token. */
     fun fetchRemoteConfiguration(baseUrl: String, deviceToken: String): ControlPlaneFetchResult =
@@ -70,6 +89,7 @@ class MolidoVpnApplication : Application() {
         vpnExecutor = Executors.newSingleThreadExecutor { task ->
             Thread(task, "molido-vpn-control").apply { isDaemon = true }
         }
+        vpnExecutor.execute { pinUpdateKeyFromBuild() }
         vpnSessions = VpnSessionController(
             supervisor = SessionSupervisor(),
             adapters = listOf(WireGuardEngineAdapter(this)),

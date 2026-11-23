@@ -22,6 +22,8 @@ jobs:
     env:
       MOLIDO_VERSION_CODE: ${{ github.run_number }}
       MOLIDO_VERSION_NAME: 1.1.${{ github.run_number }}
+      # Base64 X.509 (DER) ECDSA P-256 public key embedded in the APK; empty = auto-update off.
+      MOLIDO_UPDATE_PUBLIC_KEY: ${{ secrets.MOLIDO_UPDATE_PUBLIC_KEY }}
 
     steps:
       - name: Checkout Repository
@@ -71,6 +73,34 @@ jobs:
           sha256sum "$OUT" > "$OUT.sha256"
           echo "APK=$OUT" >> "$GITHUB_ENV"
 
+      - name: Sign update manifest
+        shell: bash
+        env:
+          UPDATE_SIGNING_KEY_B64: ${{ secrets.MOLIDO_UPDATE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [ "$SIGNED" != "true" ] || [ -z "${UPDATE_SIGNING_KEY_B64:-}" ] || [ -z "${MOLIDO_UPDATE_PUBLIC_KEY:-}" ]; then
+            echo "::warning::Update signing key or release keystore missing - no update-manifest.json published."
+            exit 0
+          fi
+          KEY="$RUNNER_TEMP/update-signing.pem"
+          PUB="$RUNNER_TEMP/update-public.der"
+          printf '%s' "$UPDATE_SIGNING_KEY_B64" | base64 --decode > "$KEY"
+          chmod 600 "$KEY"
+          printf '%s' "$MOLIDO_UPDATE_PUBLIC_KEY" | base64 --decode > "$PUB"
+          SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+          EXP=$(( $(date +%s) + 90 * 86400 ))
+          # Must match UpdateIntegrityCore.canonicalPayload: "versionCode\nexpiresAt\nsha256\n"
+          printf '%s\n%s\n%s\n' "$MOLIDO_VERSION_CODE" "$EXP" "$SHA" > "$RUNNER_TEMP/payload.txt"
+          openssl dgst -sha256 -sign "$KEY" -out "$RUNNER_TEMP/sig.der" "$RUNNER_TEMP/payload.txt"
+          # Self-check against the embedded public key before publishing.
+          openssl dgst -sha256 -verify "$PUB" -keyform DER -signature "$RUNNER_TEMP/sig.der" "$RUNNER_TEMP/payload.txt"
+          SIG=$(base64 -w0 "$RUNNER_TEMP/sig.der")
+          printf '{"versionCode":%s,"expiresAt":%s,"sha256":"%s","apk":"%s","signature":"%s"}\n' \
+            "$MOLIDO_VERSION_CODE" "$EXP" "$SHA" "$APK" "$SIG" > update-manifest.json
+          rm -f "$KEY"
+          cat update-manifest.json
+
       - name: Upload APK as Build Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -87,6 +117,8 @@ jobs:
           name: MolidoVPN v${{ env.MOLIDO_VERSION_NAME }}
           prerelease: ${{ env.SIGNED != 'true' }}
           generate_release_notes: true
+          fail_on_unmatched_files: false
           files: |
             ${{ env.APK }}
             ${{ env.APK }}.sha256
+            update-manifest.json

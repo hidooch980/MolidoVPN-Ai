@@ -28,6 +28,7 @@ import ai.molido.vpn.core.PathDecision
 import ai.molido.vpn.core.NetworkPolicy
 import ai.molido.vpn.core.RecoveryAction
 import ai.molido.vpn.core.SessionState
+import ai.molido.vpn.core.UpdateCheckOutcome
 import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
 
@@ -265,6 +266,10 @@ class MainActivity : ComponentActivity() {
             setOnClickListener { restoreSecureProfile() }
         }
         recoveryCard.addView(restoreProfileButton, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(14) })
+        val updateButton = glassButton("بررسی و نصب نسخه جدید", false).apply {
+            setOnClickListener { checkForUpdate() }
+        }
+        recoveryCard.addView(updateButton, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(8) })
         recoveryButton = glassButton("پاکسازی امن نشست ناموفق", false).apply {
             setTextColor(AMBER)
             visibility = View.GONE
@@ -284,6 +289,28 @@ class MainActivity : ComponentActivity() {
             setPadding(0, dp(22), 0, 0)
         }, LinearLayout.LayoutParams(-1, -2))
         setContentView(root)
+    }
+
+    private fun checkForUpdate() {
+        if (molidoApp.vpnSessions.snapshot().state != SessionState.IDLE) {
+            Toast.makeText(this, "برای نصب آپدیت ابتدا VPN را کاملاً قطع کنید.", Toast.LENGTH_LONG).show()
+            return
+        }
+        Toast.makeText(this, "در حال بررسی نسخه جدید…", Toast.LENGTH_SHORT).show()
+        molidoApp.vpnExecutor.execute {
+            val outcome = molidoApp.updateChecker.checkAndInstall()
+            runOnUiThread {
+                val message = when (outcome) {
+                    UpdateCheckOutcome.NOT_CONFIGURED -> "آپدیت خودکار در این نسخه فعال نیست."
+                    UpdateCheckOutcome.UP_TO_DATE -> "شما آخرین نسخه را دارید."
+                    UpdateCheckOutcome.INSTALL_STARTED -> "نسخه جدید تأیید شد؛ نصب را تأیید کنید."
+                    UpdateCheckOutcome.NO_MANIFEST -> "نسخه امضاشدهای برای آپدیت پیدا نشد."
+                    UpdateCheckOutcome.REJECTED -> "آپدیت رد شد: امضا یا فایل معتبر نبود."
+                    UpdateCheckOutcome.NETWORK_ERROR -> "اتصال به سرور آپدیت ناموفق بود."
+                }
+                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun sectionTitle(value: String) = label(value, 15f, WHITE, true).apply { setPadding(dp(4), 0, dp(4), 0) }
