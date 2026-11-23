@@ -12,6 +12,8 @@ import android.view.Gravity
 import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.EditText
+import ai.molido.vpn.core.SubscriptionImport
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Spinner
@@ -176,6 +178,7 @@ class MainActivity : ComponentActivity() {
         profileActions = ui.card().apply { setPadding(ui.dp(14), ui.dp(4), ui.dp(14), ui.dp(4)) }
         addRows(profileActions, listOf(
             ui.actionRow("وارد کردن فایل WireGuard") { pickProfiles() },
+            ui.actionRow("وارد کردن از لینک اشتراک") { askSubscriptionLink() },
             ui.actionRow("دریافت کانفیگ رایگان WARP") { registerWarp() },
             ui.actionRow("بازیابی پروفایل ذخیرهشده") { restoreSecureProfile() }
         ))
@@ -412,6 +415,54 @@ class MainActivity : ComponentActivity() {
                 profileText = if (merged.toByteArray(StandardCharsets.UTF_8).size <= MAX_PROFILE_BYTES) merged else config
                 say("کانفیگ WARP اضافه شد.")
                 offerSecureProfileStorage()
+            }
+        }.start()
+    }
+
+    private fun askSubscriptionLink() {
+        if (!isIdle()) { say("ابتدا اتصال را قطع کنید."); return }
+        val input = EditText(this).apply {
+            hint = "https://…"
+            setSingleLine()
+            textDirection = View.TEXT_DIRECTION_LTR
+            inputType = android.text.InputType.TYPE_TEXT_VARIATION_URI
+        }
+        AlertDialog.Builder(this)
+            .setTitle("لینک اشتراک")
+            .setMessage("لینک اشتراکی که خودتان دارید را وارد کنید. فعلاً فقط کانفیگهای WireGuard داخل آن وارد میشوند.")
+            .setView(input)
+            .setNegativeButton("انصراف", null)
+            .setPositiveButton("دریافت") { _, _ -> importSubscription(input.text.toString()) }
+            .show()
+    }
+
+    private fun importSubscription(url: String) {
+        if (!url.trim().startsWith("https://", ignoreCase = true)) { say("فقط لینک https پذیرفته میشود."); return }
+        busy = true
+        say("در حال دریافت لینک اشتراک…")
+        Thread {
+            val result = runCatching { SubscriptionImport.fetch(url) }.getOrNull()
+            runOnUiThread {
+                busy = false
+                when {
+                    result == null -> say("دریافت لینک ناموفق بود؛ لینک یا اتصال را بررسی کنید.")
+                    result.wireGuardCount == 0 -> say(
+                        if (result.unsupportedCount > 0) "${result.unsupportedCount} کانفیگ پیدا شد ولی هیچکدام WireGuard نبود؛ این نسخه فقط WireGuard را پشتیبانی میکند."
+                        else "کانفیگ قابل استفادهای در این لینک پیدا نشد."
+                    )
+                    else -> {
+                        val existing = profileText?.takeIf { it.contains("[Interface]", ignoreCase = true) }
+                        val merged = if (existing == null) result.wireGuardText else existing.trim() + "\n\n" + result.wireGuardText
+                        if (merged.toByteArray(StandardCharsets.UTF_8).size > MAX_PROFILE_BYTES) {
+                            say("حجم پروفایلها از ۶۴ کیلوبایت بیشتر میشود؛ ابتدا پروفایلهای قبلی را حذف کنید.")
+                            return@runOnUiThread
+                        }
+                        profileText = merged
+                        val skipped = if (result.unsupportedCount > 0) " (${result.unsupportedCount} کانفیگ غیر WireGuard نادیده گرفته شد)" else ""
+                        say("${result.wireGuardCount} کانفیگ WireGuard اضافه شد$skipped.")
+                        offerSecureProfileStorage()
+                    }
+                }
             }
         }.start()
     }
